@@ -42,7 +42,6 @@ class _PdfViewerState extends State<PdfViewer> {
     _pageInputController = TextEditingController();
     _photoViewController = PhotoViewController()
       ..outputStateStream.listen((value) {
-        print(value);
         setState(() => _build = true);
       });
     _isTextChange = false;
@@ -58,84 +57,70 @@ class _PdfViewerState extends State<PdfViewer> {
   }
 
   Widget _pageBuilder(
-      PdfPageImage pageImage,
-      bool isCurrentIndex,
-      AnimationController animationController,
-      ) {
-    return Stack(
-      children: [
-        PhotoView(
-          key: Key(pageImage.hashCode.toString()),
-          imageProvider: MemoryImage(pageImage.bytes),
-          controller: _photoViewController,
-          backgroundDecoration: const BoxDecoration(
-            color: Colors.transparent,
-          ),
-          maxScale: _zoomState.currentState?.maxScale,
-          minScale: _zoomState.currentState?.minScale,
-        ),
-        Text('tmp'),
-      ],
+    PdfPageImage pageImage,
+    bool isCurrentIndex,
+    AnimationController animationController,
+  ) {
+    return PhotoView(
+      key: Key(pageImage.hashCode.toString()),
+      imageProvider: MemoryImage(pageImage.bytes),
+      controller: _photoViewController,
+      backgroundDecoration: const BoxDecoration(
+        color: Colors.transparent,
+      ),
+      maxScale: _zoomState.currentState?.maxScale,
+      minScale: _zoomState.currentState?.minScale,
     );
   }
 
   @override
   Widget build(BuildContext context) {
     const _loadingView = Center(child: CircularProgressIndicator());
-    return Padding(
-      padding: const EdgeInsets.symmetric(
-        horizontal: 8,
-        vertical: 16,
-      ),
-      child: Column(
-        children: [
-          Padding(
-            padding: const EdgeInsets.all(8),
-            child: _OperationArea(
-              pageInputController: _pageInputController,
-              pdfController: _pdfController,
-              setIsTextChange: (isTextChange) =>
-                  setState(() => _isTextChange = isTextChange),
-            ),
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.all(4),
+          child: _OperationArea(
+            pageInputController: _pageInputController,
+            pdfController: _pdfController,
+            setIsTextChange: (isTextChange) =>
+                setState(() => _isTextChange = isTextChange),
           ),
-          Stack(
-            alignment: Alignment.topCenter,
-            children: [
-              SizedBox(
-                height:
-                widget.height ?? MediaQuery.of(context).size.height * .8,
-                child: PdfView(
-                  documentLoader: _loadingView,
-                  pageLoader: _loadingView,
-                  controller: _pdfController,
-                  pageBuilder: _pageBuilder,
-                  onDocumentLoaded: (document) {
-                    _pageInputController.text = _pdfController.page.toString();
-                    setState(() {});
-                    // TODO(haitani): ライブラリのinitialPageが修正されたら削除
-                    if (widget.initialPage != 1) {
-                      Timer(const Duration(seconds: 1),
-                              () => _pdfController.jumpToPage(widget.initialPage));
-                    }
-                  },
-                  onPageChanged: (page) {
-                    _photoViewController.reset();
-                    _zoomState.currentState.reset();
-                    if (!_isTextChange) {
-                      _pageInputController.text = page.toString();
-                    }
-                  },
-                ),
+        ),
+        Stack(
+          alignment: Alignment.topCenter,
+          children: [
+            SizedBox(
+              height: widget.height ?? MediaQuery.of(context).size.height * .8,
+              child: PdfView(
+                documentLoader: _loadingView,
+                pageLoader: _loadingView,
+                controller: _pdfController,
+                pageBuilder: _pageBuilder,
+                onDocumentLoaded: (document) {
+                  _pageInputController.text = _pdfController.page.toString();
+                  setState(() {});
+                  // TODO(haitani): ライブラリのinitialPageが修正されたら削除
+                  if (widget.initialPage != 1) {
+                    Timer(const Duration(seconds: 1),
+                        () => _pdfController.jumpToPage(widget.initialPage));
+                  }
+                },
+                onPageChanged: (page) {
+                  if (!_isTextChange) {
+                    _pageInputController.text = page.toString();
+                  }
+                },
               ),
-              if (_build)
-                _ZoomSlider(
-                  key: _zoomState,
-                  photoViewController: _photoViewController,
-                ),
-            ],
-          ),
-        ],
-      ),
+            ),
+            if (_build)
+              _ZoomSlider(
+                key: _zoomState,
+                photoViewController: _photoViewController,
+              ),
+          ],
+        ),
+      ],
     );
   }
 }
@@ -154,12 +139,12 @@ class _OperationArea extends StatelessWidget {
 
   Widget _pagingButton({bool nextPage}) {
     final paging =
-    nextPage ? pdfController.nextPage : pdfController.previousPage;
+        nextPage ? pdfController.nextPage : pdfController.previousPage;
     final icon = nextPage ? Icons.navigate_next : Icons.navigate_before;
     return SizedBox(
-      height: 52,
+      height: 38,
       child: FlatButton(
-        child: Icon(icon, size: 32),
+        child: Icon(icon, size: 24),
         shape: const CircleBorder(),
         onPressed: () {
           setIsTextChange(false);
@@ -195,9 +180,9 @@ class _OperationArea extends StatelessWidget {
       children: [
         _pagingButton(nextPage: false),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 34),
+          padding: const EdgeInsets.symmetric(horizontal: 24),
           child: SizedBox(
-            width: 58,
+            width: 48,
             child: TextField(
               maxLength: 3,
               controller: pageInputController,
@@ -206,7 +191,8 @@ class _OperationArea extends StatelessWidget {
               ],
               decoration: InputDecoration(
                 suffixText: '/ ${pdfController.pagesCount}',
-                counter: Container(),
+                counter: const SizedBox.shrink(),
+                contentPadding: const EdgeInsets.all(0),
               ),
               onChanged: onPageTextChange,
             ),
@@ -240,7 +226,6 @@ class __ZoomSliderState extends State<_ZoomSlider> {
   final _offOpacity = .3;
 
   void reset() {
-    widget.photoViewController.reset();
     _initialScale = widget.photoViewController?.scale ?? .3;
   }
 
