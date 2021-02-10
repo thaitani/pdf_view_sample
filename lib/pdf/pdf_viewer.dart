@@ -61,15 +61,39 @@ class _PdfViewerState extends State<PdfViewer> {
     bool isCurrentIndex,
     AnimationController animationController,
   ) {
-    return PhotoView(
-      key: Key(pageImage.hashCode.toString()),
-      imageProvider: MemoryImage(pageImage.bytes),
-      controller: _photoViewController,
-      backgroundDecoration: const BoxDecoration(
-        color: Colors.transparent,
-      ),
-      maxScale: _zoomState.currentState?.maxScale,
-      minScale: _zoomState.currentState?.minScale,
+    return Stack(
+      alignment: Alignment.topCenter,
+      children: [
+        PhotoView(
+          key: Key(pageImage.hashCode.toString()),
+          imageProvider: MemoryImage(pageImage.bytes),
+          controller: _photoViewController,
+          backgroundDecoration: const BoxDecoration(
+            color: Colors.transparent,
+          ),
+          maxScale: _zoomState.currentState?.maxScale,
+          minScale: _zoomState.currentState?.minScale,
+        ),
+        Container(
+          padding: const EdgeInsets.all(8),
+          alignment: Alignment.bottomRight,
+          height: pageImage.height.toDouble() *
+              (_zoomState.currentState?.minScale ?? 1),
+          width: pageImage.width.toDouble() *
+              (_zoomState.currentState?.minScale ?? 1),
+          child: IconButton(
+            color: Theme.of(context).backgroundColor,
+            icon: Icon(Icons.zoom_out_map),
+            onPressed: () => showDialog(
+              context: context,
+              builder: (context) => _FullScreenPdf(
+                pdfController: _pdfController,
+                initialPage: _pdfController.page,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 
@@ -290,6 +314,104 @@ class __ZoomSliderState extends State<_ZoomSlider> {
             _zoomButton(true),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class _FullScreenPdf extends StatefulWidget {
+  const _FullScreenPdf({
+    Key key,
+    this.pdfController,
+    this.initialPage = 1,
+  }) : super(key: key);
+
+  final PdfController pdfController;
+  final int initialPage;
+
+  @override
+  __FullScreenPdfState createState() => __FullScreenPdfState();
+}
+
+class __FullScreenPdfState extends State<_FullScreenPdf> {
+  int pageNumber = 1;
+
+  Widget _pagingButton({bool nextPage}) {
+    final icon = nextPage ? Icons.navigate_next : Icons.navigate_before;
+    return SizedBox(
+      height: 38,
+      child: TextButton(
+        child: Icon(icon, size: 24),
+        style: TextButton.styleFrom(
+          shape: const CircleBorder(),
+        ),
+        onPressed: () {
+          final newPage = nextPage ? pageNumber + 1 : pageNumber - 1;
+          setState(() {
+            pageNumber = newPage.clamp(1, widget.pdfController.pagesCount);
+          });
+        },
+      ),
+    );
+  }
+
+  @override
+  void initState() {
+    pageNumber = widget.initialPage;
+    super.initState();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final getPdfImage = () async {
+      final doc = await widget.pdfController.document;
+      final page = await doc.getPage(pageNumber);
+      final image = await page.render(
+        width: page.width * 2,
+        height: page.height * 2,
+        format: PdfPageFormat.JPEG,
+        backgroundColor: '#ffffff',
+      );
+      await page.close();
+      return image;
+    };
+    return WillPopScope(
+      onWillPop: () async {
+        widget.pdfController.jumpToPage(pageNumber);
+        return true;
+      },
+      child: FutureBuilder(
+        future: getPdfImage(),
+        builder: (context, snapshot) {
+          if (snapshot.hasData) {
+            return Row(
+              mainAxisSize: MainAxisSize.min,
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                _pagingButton(nextPage: false),
+                Stack(children: [
+                  SizedBox(
+                    height: MediaQuery.of(context).size.height,
+                    width: snapshot.data.width,
+                    child: PhotoView(
+                      key: Key(snapshot.data.hashCode.toString()),
+                      imageProvider: MemoryImage(snapshot.data.bytes),
+                      controller: PhotoViewController(),
+                      backgroundDecoration: const BoxDecoration(
+                        color: Colors.transparent,
+                      ),
+                      maxScale: _zoomState.currentState?.maxScale,
+                      minScale: _zoomState.currentState?.minScale,
+                      filterQuality: FilterQuality.high,
+                    ),
+                  ),
+                ]),
+                _pagingButton(nextPage: true),
+              ],
+            );
+          }
+          return const Center(child: CircularProgressIndicator());
+        },
       ),
     );
   }
