@@ -5,147 +5,118 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:native_pdf_view/native_pdf_view.dart';
 import 'package:photo_view/photo_view.dart';
+import 'package:photo_view/photo_view_gallery.dart';
 
 const _pagingDuration = Duration(milliseconds: 750);
 const _maxScaleMagnification = 2.0;
 
-final _zoomState = GlobalKey<__ZoomSliderState>();
-
 class PdfViewer extends StatefulWidget {
   const PdfViewer({
     Key key,
-    this.initialPage = 1,
-    this.height,
+    this.initialPage = 0,
     @required this.pdfDocument,
+    this.width,
+    this.height,
   }) : super(key: key);
 
   final int initialPage;
   final Future<PdfDocument> pdfDocument;
-  final double height;
+  final double width, height;
   @override
   _PdfViewerState createState() => _PdfViewerState();
 }
 
 class _PdfViewerState extends State<PdfViewer> {
-  PdfController _pdfController;
   TextEditingController _pageInputController;
   PhotoViewController _photoViewController;
-  bool _isTextChange;
-  bool _build = false;
+  PageController _pageController;
+  double scale = 1.0;
+  Size pdfSize = Size.zero;
+
+  double get pdfHeight => pdfSize.height * scale;
+  double get pdfWidth => pdfSize.width * scale;
 
   @override
   void initState() {
-    _pdfController = PdfController(
-      document: widget.pdfDocument,
-      initialPage: widget.initialPage,
-    );
+    _pageController = PageController(initialPage: widget.initialPage);
     _pageInputController = TextEditingController();
     _photoViewController = PhotoViewController()
-      ..outputStateStream.listen((value) {
-        setState(() => _build = true);
+      ..outputStateStream.listen((event) {
+        if (event.scale != scale) {
+          setState(() => scale = event.scale ?? 1.0);
+        }
+        print(event);
       });
-    _isTextChange = false;
     super.initState();
   }
 
   @override
   void dispose() {
-    _pdfController.dispose();
     _pageInputController.dispose();
     _photoViewController.dispose();
+    _pageController.dispose();
     super.dispose();
-  }
-
-  Widget _pageBuilder(
-    PdfPageImage pageImage,
-    bool isCurrentIndex,
-    AnimationController animationController,
-  ) {
-    return Stack(
-      alignment: Alignment.topCenter,
-      children: [
-        PhotoView(
-          key: Key(pageImage.hashCode.toString()),
-          imageProvider: MemoryImage(pageImage.bytes),
-          controller: _photoViewController,
-          backgroundDecoration: const BoxDecoration(
-            color: Colors.transparent,
-          ),
-          maxScale: _zoomState.currentState?.maxScale,
-          minScale: _zoomState.currentState?.minScale,
-        ),
-        Container(
-          padding: const EdgeInsets.all(8),
-          alignment: Alignment.bottomRight,
-          height: pageImage.height.toDouble() *
-              (_zoomState.currentState?.minScale ?? 1),
-          width: pageImage.width.toDouble() *
-              (_zoomState.currentState?.minScale ?? 1),
-          child: IconButton(
-            color: Theme.of(context).backgroundColor,
-            icon: Icon(Icons.zoom_out_map),
-            onPressed: () => showDialog(
-              context: context,
-              builder: (context) => _FullScreenPdf(
-                pdfController: _pdfController,
-                initialPage: _pdfController.page,
-              ),
-            ),
-          ),
-        ),
-      ],
-    );
   }
 
   @override
   Widget build(BuildContext context) {
-    const _loadingView = Center(child: CircularProgressIndicator());
-    return Column(
-      children: [
-        Padding(
-          padding: const EdgeInsets.all(4),
-          child: _OperationArea(
-            pageInputController: _pageInputController,
-            pdfController: _pdfController,
-            setIsTextChange: (isTextChange) =>
-                setState(() => _isTextChange = isTextChange),
-          ),
-        ),
-        Stack(
-          alignment: Alignment.topCenter,
-          children: [
-            SizedBox(
-              height: widget.height ?? MediaQuery.of(context).size.height * .8,
-              child: PdfView(
-                documentLoader: _loadingView,
-                pageLoader: _loadingView,
-                controller: _pdfController,
-                pageBuilder: _pageBuilder,
-                onDocumentLoaded: (document) {
-                  _pageInputController.text = _pdfController.page.toString();
-                  setState(() {});
-                  // TODO(haitani): ライブラリのinitialPageが修正されたら削除
-                  if (widget.initialPage != 1) {
-                    Timer(const Duration(seconds: 1),
-                        () => _pdfController.jumpToPage(widget.initialPage));
+    return _OptionalSizedChild(
+        width: widget.width,
+        height: widget.height,
+        builder: (width, height) {
+          print('max $width, $height');
+          const pagingButtonWidth = 108.0;
+          final pagingButtonHeight = pdfHeight.clamp(0, height);
+          final pagingButtonPositionH =
+              ((width - pdfWidth) / 2 - pagingButtonWidth).clamp(0, width);
+          final pagingButtonPositionV =
+              height > pdfHeight ? (height - pdfHeight) / 2 : 0;
+          return Stack(
+            alignment: Alignment.topCenter,
+            clipBehavior: Clip.none,
+            children: [
+              FutureBuilder<PdfDocument>(
+                future: widget.pdfDocument,
+                builder: (context, snapshot) {
+                  if (snapshot.hasData) {
+                    final pdfDocument = snapshot.data;
+                    return _PdfView(
+                      pdfDocument: pdfDocument,
+                      pageController: _pageController,
+                      photoViewController: _photoViewController,
+                      setPdfSize: (Size size) {
+                        if (size != pdfSize) {
+                          setState(() => pdfSize = size);
+                        }
+                      },
+                    );
                   }
-                },
-                onPageChanged: (page) {
-                  if (!_isTextChange) {
-                    _pageInputController.text = page.toString();
-                  }
+                  return const _LoadingView();
                 },
               ),
-            ),
-            if (_build)
-              _ZoomSlider(
-                key: _zoomState,
-                photoViewController: _photoViewController,
+              Positioned(
+                top: pagingButtonPositionV,
+                left: pagingButtonPositionH,
+                child: _PagingButton(
+                  height: pagingButtonHeight,
+                  width: pagingButtonWidth,
+                  isNext: false,
+                  pageController: _pageController,
+                ),
               ),
-          ],
-        ),
-      ],
-    );
+              Positioned(
+                top: pagingButtonPositionV,
+                right: pagingButtonPositionH,
+                child: _PagingButton(
+                  height: pagingButtonHeight,
+                  width: pagingButtonWidth,
+                  isNext: true,
+                  pageController: _pageController,
+                ),
+              ),
+            ],
+          );
+        });
   }
 }
 
@@ -319,100 +290,152 @@ class __ZoomSliderState extends State<_ZoomSlider> {
   }
 }
 
-class _FullScreenPdf extends StatefulWidget {
-  const _FullScreenPdf({
+class _PdfView extends StatelessWidget {
+  const _PdfView({
     Key key,
-    this.pdfController,
-    this.initialPage = 1,
+    this.pdfDocument,
+    this.pageController,
+    this.photoViewController,
+    this.setPdfSize,
   }) : super(key: key);
 
-  final PdfController pdfController;
-  final int initialPage;
-
-  @override
-  __FullScreenPdfState createState() => __FullScreenPdfState();
-}
-
-class __FullScreenPdfState extends State<_FullScreenPdf> {
-  int pageNumber = 1;
-
-  Widget _pagingButton({bool nextPage}) {
-    final icon = nextPage ? Icons.navigate_next : Icons.navigate_before;
-    return SizedBox(
-      height: 38,
-      child: TextButton(
-        child: Icon(icon, size: 24),
-        style: TextButton.styleFrom(
-          shape: const CircleBorder(),
-        ),
-        onPressed: () {
-          final newPage = nextPage ? pageNumber + 1 : pageNumber - 1;
-          setState(() {
-            pageNumber = newPage.clamp(1, widget.pdfController.pagesCount);
-          });
-        },
-      ),
-    );
-  }
-
-  @override
-  void initState() {
-    pageNumber = widget.initialPage;
-    super.initState();
-  }
+  final PdfDocument pdfDocument;
+  final PageController pageController;
+  final PhotoViewController photoViewController;
+  final void Function(Size pdfSize) setPdfSize;
 
   @override
   Widget build(BuildContext context) {
-    final getPdfImage = () async {
-      final doc = await widget.pdfController.document;
-      final page = await doc.getPage(pageNumber);
-      final image = await page.render(
-        width: page.width * 2,
-        height: page.height * 2,
-        format: PdfPageFormat.JPEG,
-        backgroundColor: '#ffffff',
+    final getPdfImage = (int pageNumber) async {
+      final page = await pdfDocument.getPage(pageNumber);
+      setPdfSize(Size(page.width.toDouble(), page.height.toDouble()));
+      print('pdf ${page.width}, ${page.height}');
+      return await page.render(
+        width: page.width,
+        height: page.height,
       );
-      await page.close();
-      return image;
     };
-    return WillPopScope(
-      onWillPop: () async {
-        widget.pdfController.jumpToPage(pageNumber);
-        return true;
-      },
-      child: FutureBuilder(
-        future: getPdfImage(),
-        builder: (context, snapshot) {
-          if (snapshot.hasData) {
-            return Row(
-              mainAxisSize: MainAxisSize.min,
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                _pagingButton(nextPage: false),
-                Stack(children: [
-                  SizedBox(
-                    height: MediaQuery.of(context).size.height,
-                    width: snapshot.data.width,
-                    child: PhotoView(
-                      key: Key(snapshot.data.hashCode.toString()),
-                      imageProvider: MemoryImage(snapshot.data.bytes),
-                      controller: PhotoViewController(),
-                      backgroundDecoration: const BoxDecoration(
-                        color: Colors.transparent,
-                      ),
-                      maxScale: _zoomState.currentState?.maxScale,
-                      minScale: _zoomState.currentState?.minScale,
-                      filterQuality: FilterQuality.high,
-                    ),
+    return PhotoViewGallery.builder(
+      builder: (BuildContext context, int index) {
+        return PhotoViewGalleryPageOptions.customChild(
+          child: FutureBuilder(
+            future: getPdfImage(index + 1),
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                return PhotoView(
+                  controller: photoViewController,
+                  imageProvider: MemoryImage(snapshot.data.bytes),
+                  backgroundDecoration: const BoxDecoration(
+                    color: Colors.transparent,
                   ),
-                ]),
-                _pagingButton(nextPage: true),
-              ],
-            );
-          }
-          return const Center(child: CircularProgressIndicator());
-        },
+                  filterQuality: FilterQuality.high,
+                );
+              }
+              return const _LoadingView();
+            },
+          ),
+          minScale: PhotoViewComputedScale.contained,
+          maxScale: PhotoViewComputedScale.contained * 2,
+        );
+      },
+      itemCount: pdfDocument.pagesCount,
+      loadingBuilder: (context, event) {
+        return const _LoadingView();
+      },
+      backgroundDecoration: const BoxDecoration(
+        color: Colors.transparent,
       ),
+      pageController: pageController,
+    );
+  }
+}
+
+class _LoadingView extends StatelessWidget {
+  const _LoadingView({Key key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
+  }
+}
+
+class _PagingButton extends StatelessWidget {
+  const _PagingButton({
+    Key key,
+    this.height,
+    this.width,
+    @required this.isNext,
+    @required this.pageController,
+  }) : super(key: key);
+  final double height;
+  final double width;
+  final bool isNext;
+  final PageController pageController;
+
+  @override
+  Widget build(BuildContext context) {
+    final paging =
+        isNext ? pageController.nextPage : pageController.previousPage;
+    final begin =
+        isNext ? FractionalOffset.centerLeft : FractionalOffset.centerRight;
+    final end =
+        isNext ? FractionalOffset.centerRight : FractionalOffset.centerLeft;
+    return Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: begin,
+          end: end,
+          colors: [
+            Colors.transparent,
+            Theme.of(context).cardColor.withOpacity(0.4),
+          ],
+          stops: const [0.0, 1],
+        ),
+      ),
+      height: height,
+      width: width,
+      child: FlatButton(
+        child: Icon(
+          isNext ? Icons.navigate_next : Icons.navigate_before,
+          size: 32,
+        ),
+        onPressed: () => paging(
+          duration: _pagingDuration,
+          curve: Curves.ease,
+        ),
+      ),
+    );
+  }
+}
+
+class _OptionalSizedChild extends StatelessWidget {
+  const _OptionalSizedChild({
+    @required this.width,
+    @required this.height,
+    @required this.builder,
+  });
+
+  final double width, height;
+  final Widget Function(double, double) builder;
+
+  @override
+  Widget build(BuildContext context) {
+    if (width != null && height != null) {
+      return SizedBox(
+        width: width,
+        height: height,
+        child: builder(width, height),
+      );
+    }
+    return LayoutBuilder(
+      builder: (context, dimens) {
+        final w = width ?? dimens.maxWidth;
+        final h = height ?? dimens.maxHeight;
+        return SizedBox(
+          width: w,
+          height: h,
+          child: builder(w, h),
+        );
+      },
     );
   }
 }
