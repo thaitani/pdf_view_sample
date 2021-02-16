@@ -25,6 +25,7 @@ class _Home extends StatefulWidget {
 
 class __HomeState extends State<_Home> {
   bool pdf = true;
+  final scrollController = ScrollController();
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -33,14 +34,16 @@ class __HomeState extends State<_Home> {
       ),
       body: Builder(
         builder: (context) => SingleChildScrollView(
+          controller: scrollController,
           child: Center(
-            child: SizedBox(
-              height: MediaQuery.of(context).size.height,
-              width: 1200,
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
               child: Card(
                 child: PdfViewer(
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   pdfDocument: PdfDocument.openAsset(
                       pdf ? 'assets/tmp.pdf' : 'assets/tmp2.pdf'),
+                  scrollController: scrollController,
                 ),
               ),
             ),
