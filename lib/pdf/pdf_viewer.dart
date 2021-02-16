@@ -30,11 +30,23 @@ class _PdfViewerState extends State<PdfViewer> {
   TextEditingController _pageInputController;
   PhotoViewController _photoViewController;
   PageController _pageController;
-  double scale = 1.0;
-  Size pdfSize = Size.zero;
+  double _scale = double.nan;
+  Size _pdfSize = Size.zero;
 
-  double get pdfHeight => pdfSize.height * scale;
-  double get pdfWidth => pdfSize.width * scale;
+  double get pdfHeight => _pdfSize.height * _scale;
+  double get pdfWidth => _pdfSize.width * _scale;
+
+  set scale(double scale) {
+    if (scale != _scale) {
+      setState(() => _scale = scale);
+    }
+  }
+
+  set pdfSize(Size size) {
+    if (size != _pdfSize) {
+      setState(() => _pdfSize = size);
+    }
+  }
 
   @override
   void initState() {
@@ -42,9 +54,7 @@ class _PdfViewerState extends State<PdfViewer> {
     _pageInputController = TextEditingController();
     _photoViewController = PhotoViewController()
       ..outputStateStream.listen((event) {
-        if (event.scale != scale) {
-          setState(() => scale = event.scale ?? 1.0);
-        }
+        scale = event.scale;
         print(event);
       });
     super.initState();
@@ -84,36 +94,34 @@ class _PdfViewerState extends State<PdfViewer> {
                       pdfDocument: pdfDocument,
                       pageController: _pageController,
                       photoViewController: _photoViewController,
-                      setPdfSize: (Size size) {
-                        if (size != pdfSize) {
-                          setState(() => pdfSize = size);
-                        }
-                      },
+                      setPdfSize: (Size size) => pdfSize = size,
                     );
                   }
                   return const _LoadingView();
                 },
               ),
-              Positioned(
-                top: pagingButtonPositionV,
-                left: pagingButtonPositionH,
-                child: _PagingButton(
-                  height: pagingButtonHeight,
-                  width: pagingButtonWidth,
-                  isNext: false,
-                  pageController: _pageController,
+              if (!_scale.isNaN) ...[
+                Positioned(
+                  top: pagingButtonPositionV,
+                  left: pagingButtonPositionH,
+                  child: _PagingButton(
+                    height: pagingButtonHeight,
+                    width: pagingButtonWidth,
+                    isNext: false,
+                    pageController: _pageController,
+                  ),
                 ),
-              ),
-              Positioned(
-                top: pagingButtonPositionV,
-                right: pagingButtonPositionH,
-                child: _PagingButton(
-                  height: pagingButtonHeight,
-                  width: pagingButtonWidth,
-                  isNext: true,
-                  pageController: _pageController,
+                Positioned(
+                  top: pagingButtonPositionV,
+                  right: pagingButtonPositionH,
+                  child: _PagingButton(
+                    height: pagingButtonHeight,
+                    width: pagingButtonWidth,
+                    isNext: true,
+                    pageController: _pageController,
+                  ),
                 ),
-              ),
+              ]
             ],
           );
         });
@@ -350,14 +358,6 @@ class _PdfView extends StatelessWidget {
   }
 }
 
-class _LoadingView extends StatelessWidget {
-  const _LoadingView({Key key}) : super(key: key);
-  @override
-  Widget build(BuildContext context) {
-    return const Center(child: CircularProgressIndicator());
-  }
-}
-
 class _PagingButton extends StatelessWidget {
   const _PagingButton({
     Key key,
@@ -437,5 +437,13 @@ class _OptionalSizedChild extends StatelessWidget {
         );
       },
     );
+  }
+}
+
+class _LoadingView extends StatelessWidget {
+  const _LoadingView({Key key}) : super(key: key);
+  @override
+  Widget build(BuildContext context) {
+    return const Center(child: CircularProgressIndicator());
   }
 }
