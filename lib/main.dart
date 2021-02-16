@@ -24,8 +24,13 @@ class _Home extends StatefulWidget {
 }
 
 class __HomeState extends State<_Home> {
-  bool pdf = true;
+  int pdfIndex = 0;
   final scrollController = ScrollController();
+  final pdfNameList = [
+    'assets/tmp.pdf',
+    'assets/tmp2.pdf',
+    'assets/tmp3.pdf',
+  ];
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -40,10 +45,11 @@ class __HomeState extends State<_Home> {
               padding: const EdgeInsets.all(8.0),
               child: Card(
                 child: PdfViewer(
+                  key: Key(pdfNameList[pdfIndex]),
                   padding: const EdgeInsets.symmetric(vertical: 16),
-                  pdfDocument: PdfDocument.openAsset(
-                      pdf ? 'assets/tmp.pdf' : 'assets/tmp2.pdf'),
+                  pdfDocument: PdfDocument.openAsset(pdfNameList[pdfIndex]),
                   scrollController: scrollController,
+                  // width: 500,
                 ),
               ),
             ),
@@ -54,7 +60,8 @@ class __HomeState extends State<_Home> {
         child: const Icon(Icons.replay),
         onPressed: () {
           setState(() {
-            pdf = !pdf;
+            final newIndex = pdfIndex + 1;
+            pdfIndex = newIndex < pdfNameList.length ? newIndex : 0;
           });
         },
       ),
