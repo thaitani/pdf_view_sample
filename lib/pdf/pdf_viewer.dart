@@ -107,17 +107,20 @@ class _PdfViewerState extends State<PdfViewer> {
     return LayoutBuilder(
       builder: (_, constraint) {
         final width = widget.width ?? constraint.maxWidth;
-        final height =
-            pdfHeight.isNaN ? MediaQuery.of(context).size.height : pdfHeight;
+        final height = pdfHeight.isNaN
+            ? MediaQuery.of(context).size.height
+            : (pdfHeight * 1.05);
         print('max $width, $height');
         print('pdf $pdfWidth, $pdfHeight');
         const pagingButtonWidth = 108.0;
         final pagingButtonHeight = height;
 
-        final pdfMarginH = (width - pdfWidth) / 2;
+        final pdfMarginLeft = (width - pdfWidth) / 2 - widget.padding.left;
+        final pdfMarginTop = (height - pdfHeight) / 2 - widget.padding.top;
+        print(pdfMarginTop);
 
-        final pagingButtonPositionH =
-            (pdfMarginH - pagingButtonWidth).clamp(double.minPositive, width);
+        final pagingButtonPositionH = (pdfMarginLeft - pagingButtonWidth)
+            .clamp(double.minPositive, width);
 
         return AnimatedContainer(
           duration: const Duration(milliseconds: 100),
@@ -125,7 +128,7 @@ class _PdfViewerState extends State<PdfViewer> {
           constraints: constraint.copyWith(
             maxHeight: widget.maxHeight,
           ),
-          height: height * 1.05,
+          height: height,
           width: width,
           child: Stack(
             alignment: Alignment.center,
@@ -142,6 +145,8 @@ class _PdfViewerState extends State<PdfViewer> {
                           _photoViewScaleStateController,
                       setPdfSize: (Size size) => pdfSize = size,
                       isFullscreen: widget._isFullscreen,
+                      pdfMarginH: pdfMarginLeft,
+                      pdfMarginV: pdfMarginTop,
                     );
                   }
                   return const _LoadingView();
@@ -318,6 +323,8 @@ class _PdfView extends StatelessWidget {
     this.photoViewScaleStateController,
     this.setPdfSize,
     this.isFullscreen,
+    this.pdfMarginH,
+    this.pdfMarginV,
   }) : super(key: key);
 
   final PdfDocument pdfDocument;
@@ -326,6 +333,7 @@ class _PdfView extends StatelessWidget {
   final PhotoViewScaleStateController photoViewScaleStateController;
   final void Function(Size pdfSize) setPdfSize;
   final bool isFullscreen;
+  final double pdfMarginH, pdfMarginV;
 
   @override
   Widget build(BuildContext context) {
@@ -344,18 +352,28 @@ class _PdfView extends StatelessWidget {
             future: getPdfImage(index + 1),
             builder: (context, snapshot) {
               if (snapshot.hasData) {
-                return PhotoView(
-                  controller: photoViewController,
-                  scaleStateController: photoViewScaleStateController,
-                  imageProvider: MemoryImage(snapshot.data.bytes),
-                  backgroundDecoration: const BoxDecoration(
-                    color: Colors.transparent,
+                return Stack(children: [
+                  PhotoView(
+                    controller: photoViewController,
+                    scaleStateController: photoViewScaleStateController,
+                    imageProvider: MemoryImage(snapshot.data.bytes),
+                    backgroundDecoration: const BoxDecoration(
+                      color: Colors.transparent,
+                    ),
+                    filterQuality: FilterQuality.high,
+                    initialScale: _minScale,
+                    minScale: _minScale,
+                    maxScale: _maxScale,
                   ),
-                  filterQuality: FilterQuality.high,
-                  initialScale: _minScale,
-                  minScale: _minScale,
-                  maxScale: _maxScale,
-                );
+                  if (!(pdfMarginH.isNaN || pdfMarginV.isNaN))
+                    Positioned(
+                      top: 316.346 * photoViewController.scale + pdfMarginV,
+                      left: 56.6929 * photoViewController.scale + pdfMarginH,
+                      width: 215.752 * photoViewController.scale,
+                      height: 10 * photoViewController.scale,
+                      child: Container(color: Colors.black.withOpacity(.5)),
+                    )
+                ]);
               }
               return const _LoadingView();
             },
