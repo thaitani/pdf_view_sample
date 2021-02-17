@@ -3,14 +3,15 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:native_pdf_view/native_pdf_view.dart';
+import 'package:native_pdf_renderer/native_pdf_renderer.dart';
 import 'package:photo_view/photo_view.dart';
 import 'package:photo_view/photo_view_gallery.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 const _pagingDuration = Duration(milliseconds: 750);
 const _minScale = 1.0;
 const _maxScaleMagnification = 1.5;
-const _fullscreenMagnification = 1.1;
+const _fullscreenMagnification = 1.2;
 const _maxScale = _minScale * _maxScaleMagnification;
 
 class PdfViewer extends StatefulWidget {
@@ -113,11 +114,10 @@ class _PdfViewerState extends State<PdfViewer> {
         print('max $width, $height');
         print('pdf $pdfWidth, $pdfHeight');
         const pagingButtonWidth = 108.0;
-        final pagingButtonHeight = height;
+        final pagingButtonHeight = pdfHeight;
 
         final pdfMarginLeft = (width - pdfWidth) / 2 - widget.padding.left;
         final pdfMarginTop = (height - pdfHeight) / 2 - widget.padding.top;
-        print(pdfMarginTop);
 
         final pagingButtonPositionH = (pdfMarginLeft - pagingButtonWidth)
             .clamp(double.minPositive, width);
@@ -145,28 +145,30 @@ class _PdfViewerState extends State<PdfViewer> {
                           _photoViewScaleStateController,
                       setPdfSize: (Size size) => pdfSize = size,
                       isFullscreen: widget._isFullscreen,
-                      pdfMarginH: pdfMarginLeft,
-                      pdfMarginV: pdfMarginTop,
+                      pdfMarginLeft: pdfMarginLeft,
+                      pdfMarginTop: pdfMarginTop,
                     );
                   }
                   return const _LoadingView();
                 },
               ),
               if (!_scale.isNaN) ...[
-                _PagingButton(
-                  height: pagingButtonHeight,
-                  width: pagingButtonWidth,
-                  isNext: false,
-                  pageController: _pageController,
-                  hPosition: pagingButtonPositionH,
-                ),
-                _PagingButton(
-                  height: pagingButtonHeight,
-                  width: pagingButtonWidth,
-                  isNext: true,
-                  pageController: _pageController,
-                  hPosition: pagingButtonPositionH,
-                ),
+                if (width > 580) ...[
+                  _PagingButton(
+                    height: pagingButtonHeight,
+                    width: pagingButtonWidth,
+                    isNext: false,
+                    pageController: _pageController,
+                    hPosition: pagingButtonPositionH,
+                  ),
+                  _PagingButton(
+                    height: pagingButtonHeight,
+                    width: pagingButtonWidth,
+                    isNext: true,
+                    pageController: _pageController,
+                    hPosition: pagingButtonPositionH,
+                  ),
+                ],
                 _OperationArea(
                   pdfDocument: widget.pdfDocument,
                   isFullscreen: widget._isFullscreen,
@@ -270,13 +272,13 @@ class _ZoomSlider extends StatelessWidget {
   Widget build(BuildContext context) {
     Widget _zoomButton(bool zoom) {
       final icon = zoom ? Icons.zoom_in : Icons.zoom_out;
-      return InkWell(
-        child: Icon(
+      return IconButton(
+        icon: Icon(
           icon,
           size: 24,
           color: Theme.of(context).colorScheme.background,
         ),
-        onTap: () {
+        onPressed: () {
           const interval = (_maxScale - _minScale) * .2;
           final nowValue = photoViewController.scale;
           final newValue = zoom ? nowValue + interval : nowValue - interval;
@@ -323,8 +325,8 @@ class _PdfView extends StatelessWidget {
     this.photoViewScaleStateController,
     this.setPdfSize,
     this.isFullscreen,
-    this.pdfMarginH,
-    this.pdfMarginV,
+    this.pdfMarginLeft,
+    this.pdfMarginTop,
   }) : super(key: key);
 
   final PdfDocument pdfDocument;
@@ -333,7 +335,7 @@ class _PdfView extends StatelessWidget {
   final PhotoViewScaleStateController photoViewScaleStateController;
   final void Function(Size pdfSize) setPdfSize;
   final bool isFullscreen;
-  final double pdfMarginH, pdfMarginV;
+  final double pdfMarginLeft, pdfMarginTop;
 
   @override
   Widget build(BuildContext context) {
@@ -346,13 +348,13 @@ class _PdfView extends StatelessWidget {
       );
     };
     return PhotoViewGallery.builder(
-      builder: (BuildContext context, int index) {
-        return PhotoViewGalleryPageOptions.customChild(
-          child: FutureBuilder(
-            future: getPdfImage(index + 1),
-            builder: (context, snapshot) {
-              if (snapshot.hasData) {
-                return Stack(children: [
+      builder: (context, index) => PhotoViewGalleryPageOptions.customChild(
+        child: FutureBuilder(
+          future: getPdfImage(index + 1),
+          builder: (context, snapshot) {
+            if (snapshot.hasData) {
+              return Stack(
+                children: [
                   PhotoView(
                     controller: photoViewController,
                     scaleStateController: photoViewScaleStateController,
@@ -361,29 +363,39 @@ class _PdfView extends StatelessWidget {
                       color: Colors.transparent,
                     ),
                     filterQuality: FilterQuality.high,
-                    initialScale: _minScale,
+                    initialScale: isFullscreen
+                        ? PhotoViewComputedScale.contained
+                        : _minScale,
                     minScale: _minScale,
-                    maxScale: _maxScale,
+                    maxScale: isFullscreen
+                        ? _maxScale * _fullscreenMagnification
+                        : _maxScale,
                   ),
-                  if (!(pdfMarginH.isNaN || pdfMarginV.isNaN))
+                  if (!(pdfMarginLeft.isNaN || pdfMarginTop.isNaN))
                     Positioned(
-                      top: 316.346 * photoViewController.scale + pdfMarginV,
-                      left: 56.6929 * photoViewController.scale + pdfMarginH,
+                      top: 316.346 * photoViewController.scale + pdfMarginTop,
+                      left: 56.6929 * photoViewController.scale + pdfMarginLeft,
                       width: 215.752 * photoViewController.scale,
                       height: 10 * photoViewController.scale,
-                      child: Container(color: Colors.black.withOpacity(.5)),
+                      child: InkWell(
+                        onTap: () async {
+                          const url = 'https://www.antennahouse.com/';
+                          final result = await canLaunch(url);
+                          if (result) {
+                            await launch(url);
+                          }
+                        },
+                      ),
                     )
-                ]);
-              }
-              return const _LoadingView();
-            },
-          ),
-        );
-      },
+                ],
+              );
+            }
+            return const _LoadingView();
+          },
+        ),
+      ),
       itemCount: pdfDocument.pagesCount,
-      loadingBuilder: (context, event) {
-        return const _LoadingView();
-      },
+      loadingBuilder: (context, event) => const _LoadingView(),
       backgroundDecoration: const BoxDecoration(
         color: Colors.transparent,
       ),
