@@ -216,15 +216,19 @@ class _OperationArea extends StatelessWidget {
 
   Future<void> _tapFullscreenButton(BuildContext context) async {
     if (isFullscreen) {
-      Navigator.pop(context);
+      Navigator.pop(context, pageController.page.toInt());
     } else {
-      await showDialog(
+      final page = await showDialog(
         context: context,
         builder: (_) => _FullscreenPdfView(
           pdfDocument: pdfDocument,
+          pageController: pageController,
           initialPage: pageController.page.toInt(),
         ),
       );
+      if (page != null) {
+        pageController.jumpToPage(page);
+      }
     }
   }
 
@@ -276,7 +280,7 @@ class _PageInputField extends StatelessWidget {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 8),
       child: SizedBox(
-        width: 42,
+        width: 48,
         child: TextField(
           maxLength: 3,
           controller: pageInputController,
@@ -284,7 +288,7 @@ class _PageInputField extends StatelessWidget {
             FilteringTextInputFormatter.allow(RegExp('[0-9]')),
           ],
           decoration: InputDecoration(
-            suffixText: '/ $pageCount',
+            suffixText: '/$pageCount',
             counter: const SizedBox.shrink(),
             contentPadding: const EdgeInsets.all(0),
           ),
@@ -293,7 +297,12 @@ class _PageInputField extends StatelessWidget {
             if (page == null) {
               return;
             }
-            pageController.jumpToPage(page - 1);
+            final newPage = page < 1
+                ? 0
+                : page > pageCount
+                    ? pageCount - 1
+                    : page - 1;
+            pageController.jumpToPage(newPage);
           },
         ),
       ),
@@ -316,11 +325,7 @@ class _ZoomSlider extends StatelessWidget {
     Widget _zoomButton(bool zoom) {
       final icon = zoom ? Icons.zoom_in : Icons.zoom_out;
       return IconButton(
-        icon: Icon(
-          icon,
-          size: 24,
-          color: Theme.of(context).colorScheme.background,
-        ),
+        icon: Icon(icon),
         onPressed: () {
           const interval = (_maxScale - _minScale) * .2;
           final nowValue = photoViewController.scale;
@@ -448,7 +453,12 @@ class _PdfView extends StatelessWidget {
         color: Colors.transparent,
       ),
       pageController: pageController,
-      onPageChanged: (page) => pageInputController.text = (page + 1).toString(),
+      onPageChanged: (page) {
+        final pageStr = (page + 1).toString();
+        if (pageStr != pageInputController.text) {
+          pageInputController.text = pageStr;
+        }
+      },
     );
   }
 }
@@ -544,18 +554,29 @@ class _FullscreenPdfView extends StatelessWidget {
     Key key,
     this.initialPage,
     @required this.pdfDocument,
+    this.pageController,
   }) : super(key: key);
 
   final int initialPage;
   final Future<PdfDocument> pdfDocument;
+  final PageController pageController;
   @override
   Widget build(BuildContext context) {
+    final key = GlobalKey<_PdfViewerState>();
     return Scaffold(
-      body: Center(
-        child: PdfViewer._fullscreen(
-          pdfDocument: pdfDocument,
-          initialPage: initialPage,
-          maxHeight: MediaQuery.of(context).size.height,
+      body: WillPopScope(
+        onWillPop: () async {
+          final page = key.currentState._pageController.page.toInt();
+          pageController.jumpToPage(page);
+          return true;
+        },
+        child: Center(
+          child: PdfViewer._fullscreen(
+            key: key,
+            pdfDocument: pdfDocument,
+            initialPage: initialPage,
+            maxHeight: MediaQuery.of(context).size.height,
+          ),
         ),
       ),
     );
