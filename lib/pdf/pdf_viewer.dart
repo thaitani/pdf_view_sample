@@ -161,6 +161,7 @@ class _PdfViewerState extends State<PdfViewer> {
                 },
               ),
               if (!_scale.isNaN) ...[
+                // TODO(haitani): 画面サイズが小さい時見えないボタンにする
                 if (width > 580) ...[
                   _PagingButton(
                     height: pagingButtonHeight,
@@ -226,6 +227,9 @@ class _OperationArea extends StatefulWidget {
 }
 
 class __OperationAreaState extends State<_OperationArea> {
+  static const height = 48.0;
+  static const width = 400.0;
+
   double top = 0;
   double left;
   double opacity = .4;
@@ -249,21 +253,48 @@ class __OperationAreaState extends State<_OperationArea> {
     }
   }
 
+  void _setScrollOffset() {
+    if (mounted) {
+      setState(() {
+        scrollOffset = widget.scrollController.offset;
+      });
+    }
+  }
+
   @override
   void initState() {
-    widget.scrollController?.addListener(() {
-      if (mounted) {
-        setState(() => scrollOffset = widget.scrollController.offset);
-      }
-    });
+    widget.scrollController?.addListener(_setScrollOffset);
     super.initState();
   }
 
   @override
-  Widget build(BuildContext context) {
-    const height = 48.0;
-    const width = 400.0;
+  void dispose() {
+    widget.scrollController?.removeListener(_setScrollOffset);
+    super.dispose();
+  }
 
+  @override
+  void didUpdateWidget(covariant _OperationArea oldWidget) {
+    final RenderBox box = widget.pdfViewerKey.currentContext.findRenderObject();
+    setState(() {
+      // TODO(haitani): 整理
+      top = top.clamp(
+          0,
+          box.size.height -
+              scrollOffset -
+              height -
+              (widget.scrollController?.position?.maxScrollExtent ?? 0) -
+              widget.pdfViewerPadding.vertical);
+      if (left != null) {
+        left = left.clamp(
+            0, box.size.width - 40 - widget.pdfViewerPadding.horizontal);
+      }
+    });
+    super.didUpdateWidget(oldWidget);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Positioned(
       top: top + scrollOffset,
       left: left,
@@ -283,14 +314,11 @@ class __OperationAreaState extends State<_OperationArea> {
                   cursor: SystemMouseCursors.move,
                   child: Draggable(
                     onDragEnd: (detail) {
+                      print(detail.offset);
                       final RenderBox box =
                           widget.pdfViewerKey.currentContext.findRenderObject();
-                      print(box.size);
-                      print(detail.offset.dy -
-                          box.localToGlobal(Offset.zero).dy -
-                          widget.pdfViewerPadding.top -
-                          scrollOffset);
                       setState(() {
+                        // TODO(haitani): 整理
                         top = (detail.offset.dy -
                                 box.localToGlobal(Offset.zero).dy -
                                 widget.pdfViewerPadding.top -
@@ -298,8 +326,10 @@ class __OperationAreaState extends State<_OperationArea> {
                             .clamp(
                                 0,
                                 box.size.height -
-                                    scrollOffset -
                                     widget.pdfViewerPadding.vertical -
+                                    (widget.scrollController?.position
+                                            ?.maxScrollExtent ??
+                                        0) -
                                     height);
                         left = (detail.offset.dx -
                                 box.localToGlobal(Offset.zero).dx -
@@ -307,7 +337,7 @@ class __OperationAreaState extends State<_OperationArea> {
                             .clamp(
                                 0,
                                 box.size.width -
-                                    width -
+                                    40 -
                                     widget.pdfViewerPadding.horizontal);
                       });
                     },
