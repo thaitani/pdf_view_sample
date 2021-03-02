@@ -54,7 +54,7 @@ class PdfViewer extends StatefulWidget {
 }
 
 class _PdfViewerState extends State<PdfViewer> {
-  final pdfViewerKey = GlobalKey();
+  final _pdfViewerKey = GlobalKey();
   TextEditingController _pageInputController;
   PhotoViewController _photoViewController;
   PhotoViewScaleStateController _photoViewScaleStateController;
@@ -110,7 +110,7 @@ class _PdfViewerState extends State<PdfViewer> {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
-      key: pdfViewerKey,
+      key: _pdfViewerKey,
       builder: (_, constraint) {
         final width = widget.width ?? constraint.maxWidth;
         final height = pdfHeight.isNaN
@@ -179,7 +179,7 @@ class _PdfViewerState extends State<PdfViewer> {
                   ),
                 ],
                 _OperationArea(
-                  pdfViewerKey: pdfViewerKey,
+                  pdfViewerKey: _pdfViewerKey,
                   pdfViewerPadding: widget.padding,
                   pdfDocument: widget.pdfDocument,
                   isFullscreen: widget._isFullscreen,
@@ -228,14 +228,19 @@ class _OperationArea extends StatefulWidget {
 
 class __OperationAreaState extends State<_OperationArea> {
   static const height = 48.0;
-  static const width = 400.0;
+  static const width = 450.0;
 
   double top = 0;
   double left;
   double opacity = .4;
   double scrollOffset = 0;
+  double get marginV =>
+      height +
+      (widget.scrollController?.position?.maxScrollExtent ?? 0) +
+      widget.pdfViewerPadding.vertical;
+  double get marginH => 60 + widget.pdfViewerPadding.horizontal;
 
-  Future<void> _tapFullscreenButton(BuildContext context) async {
+  Future<void> _onTapFullscreenButton(BuildContext context) async {
     if (widget.isFullscreen) {
       Navigator.pop(context, widget.pageController.page.toInt());
     } else {
@@ -251,6 +256,21 @@ class __OperationAreaState extends State<_OperationArea> {
         widget.pageController.jumpToPage(page);
       }
     }
+  }
+
+  void _onDragEnd(DraggableDetails detail) {
+    final RenderBox box = widget.pdfViewerKey.currentContext.findRenderObject();
+    setState(() {
+      top = (detail.offset.dy -
+              box.localToGlobal(Offset.zero).dy -
+              widget.pdfViewerPadding.top -
+              scrollOffset)
+          .clamp(0, box.size.height - marginV);
+      left = (detail.offset.dx -
+              box.localToGlobal(Offset.zero).dx -
+              widget.pdfViewerPadding.left)
+          .clamp(0, box.size.width - marginH);
+    });
   }
 
   void _setScrollOffset() {
@@ -277,18 +297,8 @@ class __OperationAreaState extends State<_OperationArea> {
   void didUpdateWidget(covariant _OperationArea oldWidget) {
     final RenderBox box = widget.pdfViewerKey.currentContext.findRenderObject();
     setState(() {
-      // TODO(haitani): 整理
-      top = top.clamp(
-          0,
-          box.size.height -
-              scrollOffset -
-              height -
-              (widget.scrollController?.position?.maxScrollExtent ?? 0) -
-              widget.pdfViewerPadding.vertical);
-      if (left != null) {
-        left = left.clamp(
-            0, box.size.width - 40 - widget.pdfViewerPadding.horizontal);
-      }
+      top = top.clamp(0, box.size.height - marginV);
+      left = left?.clamp(0, box.size.width - marginH);
     });
     super.didUpdateWidget(oldWidget);
   }
@@ -310,47 +320,10 @@ class __OperationAreaState extends State<_OperationArea> {
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                MouseRegion(
-                  cursor: SystemMouseCursors.move,
-                  child: Draggable(
-                    onDragEnd: (detail) {
-                      print(detail.offset);
-                      final RenderBox box =
-                          widget.pdfViewerKey.currentContext.findRenderObject();
-                      setState(() {
-                        // TODO(haitani): 整理
-                        top = (detail.offset.dy -
-                                box.localToGlobal(Offset.zero).dy -
-                                widget.pdfViewerPadding.top -
-                                scrollOffset)
-                            .clamp(
-                                0,
-                                box.size.height -
-                                    widget.pdfViewerPadding.vertical -
-                                    (widget.scrollController?.position
-                                            ?.maxScrollExtent ??
-                                        0) -
-                                    height);
-                        left = (detail.offset.dx -
-                                box.localToGlobal(Offset.zero).dx -
-                                widget.pdfViewerPadding.left)
-                            .clamp(
-                                0,
-                                box.size.width -
-                                    40 -
-                                    widget.pdfViewerPadding.horizontal);
-                      });
-                    },
-                    feedback: Container(
-                      height: height,
-                      width: width,
-                      decoration: BoxDecoration(border: Border.all()),
-                    ),
-                    child: const Icon(
-                      Icons.drag_indicator_sharp,
-                      size: 28,
-                    ),
-                  ),
+                _DragArea(
+                  height: height,
+                  width: width,
+                  onDragEnd: _onDragEnd,
                 ),
                 _PageInputField(
                   pageController: widget.pageController,
@@ -363,11 +336,39 @@ class __OperationAreaState extends State<_OperationArea> {
                 ),
                 _FullscreenButton(
                   isFullscreen: widget.isFullscreen,
-                  onPressed: () => _tapFullscreenButton(context),
+                  onPressed: () => _onTapFullscreenButton(context),
                 ),
               ],
             ),
           ),
+        ),
+      ),
+    );
+  }
+}
+
+class _DragArea extends StatelessWidget {
+  const _DragArea({Key key, this.height, this.width, this.onDragEnd})
+      : super(key: key);
+
+  final double height;
+  final double width;
+  final DragEndCallback onDragEnd;
+
+  @override
+  Widget build(BuildContext context) {
+    return MouseRegion(
+      cursor: SystemMouseCursors.move,
+      child: Draggable(
+        onDragEnd: onDragEnd,
+        feedback: Container(
+          height: height,
+          width: width,
+          decoration: BoxDecoration(border: Border.all()),
+        ),
+        child: const Icon(
+          Icons.drag_indicator_sharp,
+          size: 28,
         ),
       ),
     );
