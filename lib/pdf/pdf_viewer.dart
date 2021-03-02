@@ -14,7 +14,10 @@ const _pagingDuration = Duration(milliseconds: 750);
 const _minScale = 1.0;
 const _maxScaleMagnification = 1.5;
 const _fullscreenMagnification = 1.2;
-const _maxScale = _minScale * _maxScaleMagnification;
+double _maxScale(bool isFullscreen) =>
+    _minScale *
+    _maxScaleMagnification *
+    (isFullscreen ? _fullscreenMagnification : 1);
 
 class PdfViewer extends StatefulWidget {
   const PdfViewer({
@@ -32,11 +35,11 @@ class PdfViewer extends StatefulWidget {
     Key key,
     this.initialPage = 0,
     @required this.pdfDocument,
+    this.scrollController,
     this.maxHeight,
   })  : _isFullscreen = true,
         padding = EdgeInsets.zero,
         width = null,
-        scrollController = null,
         super(key: key);
 
   final int initialPage;
@@ -51,6 +54,7 @@ class PdfViewer extends StatefulWidget {
 }
 
 class _PdfViewerState extends State<PdfViewer> {
+  final pdfViewerKey = GlobalKey();
   TextEditingController _pageInputController;
   PhotoViewController _photoViewController;
   PhotoViewScaleStateController _photoViewScaleStateController;
@@ -106,6 +110,7 @@ class _PdfViewerState extends State<PdfViewer> {
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
+      key: pdfViewerKey,
       builder: (_, constraint) {
         final width = widget.width ?? constraint.maxWidth;
         final height = pdfHeight.isNaN
@@ -173,6 +178,8 @@ class _PdfViewerState extends State<PdfViewer> {
                   ),
                 ],
                 _OperationArea(
+                  pdfViewerKey: pdfViewerKey,
+                  pdfViewerPadding: widget.padding,
                   pdfDocument: widget.pdfDocument,
                   isFullscreen: widget._isFullscreen,
                   pageController: _pageController,
@@ -193,6 +200,8 @@ class _PdfViewerState extends State<PdfViewer> {
 class _OperationArea extends StatefulWidget {
   const _OperationArea({
     Key key,
+    @required this.pdfViewerKey,
+    @required this.pdfViewerPadding,
     @required this.pdfDocument,
     @required this.isFullscreen,
     @required this.pageController,
@@ -202,6 +211,8 @@ class _OperationArea extends StatefulWidget {
     this.scrollController,
   }) : super(key: key);
 
+  final GlobalKey pdfViewerKey;
+  final EdgeInsets pdfViewerPadding;
   final Future<PdfDocument> pdfDocument;
   final bool isFullscreen;
   final PageController pageController;
@@ -241,9 +252,9 @@ class __OperationAreaState extends State<_OperationArea> {
   @override
   void initState() {
     widget.scrollController?.addListener(() {
-      setState(() {
-        scrollOffset = widget.scrollController.offset;
-      });
+      if (mounted) {
+        setState(() => scrollOffset = widget.scrollController.offset);
+      }
     });
     super.initState();
   }
@@ -252,6 +263,7 @@ class __OperationAreaState extends State<_OperationArea> {
   Widget build(BuildContext context) {
     const height = 48.0;
     const width = 400.0;
+
     return Positioned(
       top: top + scrollOffset,
       left: left,
@@ -271,10 +283,32 @@ class __OperationAreaState extends State<_OperationArea> {
                   cursor: SystemMouseCursors.move,
                   child: Draggable(
                     onDragEnd: (detail) {
-                      print(detail.offset);
+                      final RenderBox box =
+                          widget.pdfViewerKey.currentContext.findRenderObject();
+                      print(box.size);
+                      print(detail.offset.dy -
+                          box.localToGlobal(Offset.zero).dy -
+                          widget.pdfViewerPadding.top -
+                          scrollOffset);
                       setState(() {
-                        top = detail.offset.dy;
-                        left = detail.offset.dx;
+                        top = (detail.offset.dy -
+                                box.localToGlobal(Offset.zero).dy -
+                                widget.pdfViewerPadding.top -
+                                scrollOffset)
+                            .clamp(
+                                0,
+                                box.size.height -
+                                    scrollOffset -
+                                    widget.pdfViewerPadding.vertical -
+                                    height);
+                        left = (detail.offset.dx -
+                                box.localToGlobal(Offset.zero).dx -
+                                widget.pdfViewerPadding.left)
+                            .clamp(
+                                0,
+                                box.size.width -
+                                    width -
+                                    widget.pdfViewerPadding.horizontal);
                       });
                     },
                     feedback: Container(
@@ -344,11 +378,7 @@ class _PageInputField extends StatelessWidget {
             if (page == null) {
               return;
             }
-            final newPage = page < 1
-                ? 0
-                : page > pageCount
-                    ? pageCount - 1
-                    : page - 1;
+            final newPage = (page - 1).clamp(0, pageCount);
             pageController.jumpToPage(newPage);
           },
         ),
@@ -374,10 +404,11 @@ class _ZoomSlider extends StatelessWidget {
       return IconButton(
         icon: Icon(icon),
         onPressed: () {
-          const interval = (_maxScale - _minScale) * .2;
+          final interval = (_maxScale(isFullscreen) - _minScale) * .2;
           final nowValue = photoViewController.scale;
           final newValue = zoom ? nowValue + interval : nowValue - interval;
-          photoViewController.scale = newValue.clamp(_minScale, _maxScale);
+          photoViewController.scale =
+              newValue.clamp(_minScale, _maxScale(isFullscreen));
         },
       );
     }
@@ -398,7 +429,7 @@ class _ZoomSlider extends StatelessWidget {
           ),
           child: Slider(
             value: photoViewController.scale,
-            max: _maxScale,
+            max: _maxScale(isFullscreen),
             min: _minScale,
             onChanged: (value) {
               photoViewController.scale = value;
@@ -463,13 +494,9 @@ class _PdfView extends StatelessWidget {
                       color: Colors.transparent,
                     ),
                     filterQuality: FilterQuality.high,
-                    initialScale: isFullscreen
-                        ? PhotoViewComputedScale.contained
-                        : _minScale,
+                    initialScale: _minScale,
                     minScale: _minScale,
-                    maxScale: isFullscreen
-                        ? _maxScale * _fullscreenMagnification
-                        : _maxScale,
+                    maxScale: _maxScale(isFullscreen),
                   ),
                   if (!(pdfMargin.dx.isNaN || pdfMargin.dy.isNaN) &&
                       pdfData.annotations != null)
@@ -633,6 +660,7 @@ class _FullscreenPdfView extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final key = GlobalKey<_PdfViewerState>();
+    final scrollController = ScrollController();
     return Scaffold(
       body: WillPopScope(
         onWillPop: () async {
@@ -641,11 +669,14 @@ class _FullscreenPdfView extends StatelessWidget {
           return true;
         },
         child: Center(
-          child: PdfViewer._fullscreen(
-            key: key,
-            pdfDocument: pdfDocument,
-            initialPage: initialPage,
-            maxHeight: MediaQuery.of(context).size.height,
+          child: SingleChildScrollView(
+            controller: scrollController,
+            child: PdfViewer._fullscreen(
+              key: key,
+              pdfDocument: pdfDocument,
+              initialPage: initialPage,
+              scrollController: scrollController,
+            ),
           ),
         ),
       ),

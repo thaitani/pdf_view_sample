@@ -30,8 +30,7 @@ dependencies:
 
   native_pdf_renderer:
     git:
-      url: https://github.com/haip1125/packages.flutter.git
-      path: packages/native_pdf_renderer/
+      url: https://gitlab.com/t.haitani/native_pdf_renderer.git
   photo_view:
   url_launcher:
 
