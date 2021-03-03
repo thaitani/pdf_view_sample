@@ -11,7 +11,8 @@ import 'package:photo_view/photo_view_gallery.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _pagingDuration = Duration(milliseconds: 750);
-const _maxScaleMagnification = 1.5;
+const _minScale = .5;
+const _maxScale = 2.0;
 
 class PdfViewer extends StatefulWidget {
   const PdfViewer({
@@ -69,7 +70,7 @@ class _PdfViewerState extends State<PdfViewer> {
     }
     return divideSize(screenSize, _pdfSize)
         .shortestSide
-        .clamp(double.minPositive, maxInitialScale);
+        .clamp(_minScale, maxInitialScale);
   }
 
   set scale(double scale) {
@@ -410,10 +411,6 @@ class _ZoomSlider extends StatelessWidget {
   final bool isFullscreen;
   final double initialScale;
 
-  double get _maxScale => initialScale * _maxScaleMagnification;
-
-  double get _minScale => initialScale;
-
   @override
   Widget build(BuildContext context) {
     Widget _zoomButton(bool zoom) {
@@ -421,7 +418,7 @@ class _ZoomSlider extends StatelessWidget {
       return IconButton(
         icon: Icon(icon),
         onPressed: () {
-          final interval = (_maxScale - _minScale) * .2;
+          const interval = (_maxScale - _minScale) * .2;
           final nowValue = photoViewController.scale;
           final newValue = zoom ? nowValue + interval : nowValue - interval;
           photoViewController.scale = newValue.clamp(_minScale, _maxScale);
@@ -519,8 +516,8 @@ class _PdfView extends StatelessWidget {
                     ),
                     filterQuality: FilterQuality.high,
                     initialScale: initialScale,
-                    minScale: initialScale,
-                    maxScale: initialScale * _maxScaleMagnification,
+                    minScale: _minScale,
+                    maxScale: _maxScale,
                   ),
                   _PagingButton(
                     height: pdfSize.height,
