@@ -48,6 +48,7 @@ class PdfViewer extends StatefulWidget {
 class _PdfViewerState extends State<PdfViewer> {
   final _pdfViewerKey = GlobalKey();
   TextEditingController _pageInputController;
+  TextEditingController _scaleInputController;
   PhotoViewController _photoViewController;
   PhotoViewScaleStateController _photoViewScaleStateController;
   PageController _pageController;
@@ -64,7 +65,7 @@ class _PdfViewerState extends State<PdfViewer> {
   double get initialScale {
     final RenderBox box = _pdfViewerKey.currentContext?.findRenderObject();
     final screenSize = widget._isFullscreen ? fullscreenSize : box.size;
-    final maxInitialScale = widget._isFullscreen ? 1.4 : 1;
+    final maxInitialScale = widget._isFullscreen ? 1.5 : 1;
     if (_pdfSize == Size.zero || screenSize == null) {
       return 1;
     }
@@ -96,9 +97,14 @@ class _PdfViewerState extends State<PdfViewer> {
     _pageController = PageController(initialPage: widget.initialPage);
     _pageInputController =
         TextEditingController(text: (widget.initialPage + 1).toString());
+    _scaleInputController = TextEditingController(text: '100');
     _photoViewController = PhotoViewController()
       ..outputStateStream.listen((event) {
         scale = event.scale;
+        final scaleText = (_scale * 100).round().toString();
+        if (scaleText != _scaleInputController.text) {
+          _scaleInputController.text = scaleText;
+        }
         print(event);
       });
     _photoViewScaleStateController = PhotoViewScaleStateController();
@@ -111,6 +117,7 @@ class _PdfViewerState extends State<PdfViewer> {
     _photoViewController.dispose();
     _pageController.dispose();
     _photoViewScaleStateController.dispose();
+    _scaleInputController.dispose();
     super.dispose();
   }
 
@@ -170,10 +177,10 @@ class _PdfViewerState extends State<PdfViewer> {
                   isFullscreen: widget._isFullscreen,
                   pageController: _pageController,
                   pageInputController: _pageInputController,
+                  scaleInputController: _scaleInputController,
                   pageCount: _pdfPageCount,
                   photoViewController: _photoViewController,
                   scrollController: widget.scrollController,
-                  initialScale: initialScale,
                 ),
               ]
             ],
@@ -192,9 +199,9 @@ class _OperationArea extends StatefulWidget {
     @required this.isFullscreen,
     @required this.pageController,
     @required this.pageInputController,
+    @required this.scaleInputController,
     @required this.photoViewController,
     @required this.pageCount,
-    @required this.initialScale,
     this.scrollController,
   }) : super(key: key);
 
@@ -204,9 +211,9 @@ class _OperationArea extends StatefulWidget {
   final PageController pageController;
   final PhotoViewController photoViewController;
   final TextEditingController pageInputController;
+  final TextEditingController scaleInputController;
   final int pageCount;
   final ScrollController scrollController;
-  final double initialScale;
 
   @override
   __OperationAreaState createState() => __OperationAreaState();
@@ -310,10 +317,10 @@ class __OperationAreaState extends State<_OperationArea> {
                   pageInputController: widget.pageInputController,
                   pageCount: widget.pageCount,
                 ),
-                _ZoomSlider(
+                _ZoomInputField(
                   isFullscreen: widget.isFullscreen,
                   photoViewController: widget.photoViewController,
-                  initialScale: widget.initialScale,
+                  scaleInputController: widget.scaleInputController,
                 ),
                 _FullscreenButton(
                   isFullscreen: widget.isFullscreen,
@@ -368,83 +375,119 @@ class _PageInputField extends StatelessWidget {
   final TextEditingController pageInputController;
   final int pageCount;
 
+  Widget _pagingButton(bool isNext) {
+    final icon = isNext ? Icons.navigate_next : Icons.navigate_before;
+    final paging =
+        isNext ? pageController.nextPage : pageController.previousPage;
+    return IconButton(
+      icon: Icon(icon),
+      onPressed: () => paging(
+        duration: _pagingDuration,
+        curve: Curves.ease,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: SizedBox(
-        width: 48,
-        child: TextField(
-          maxLength: 3,
-          controller: pageInputController,
-          inputFormatters: [
-            FilteringTextInputFormatter.allow(RegExp('[0-9]')),
-          ],
-          decoration: InputDecoration(
-            suffixText: '/$pageCount',
-            counter: const SizedBox.shrink(),
-            contentPadding: const EdgeInsets.all(0),
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        _pagingButton(false),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: SizedBox(
+            width: 48,
+            child: TextField(
+              maxLength: 3,
+              controller: pageInputController,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp('[0-9]')),
+              ],
+              decoration: InputDecoration(
+                suffixText: '/$pageCount',
+                counter: const SizedBox.shrink(),
+                contentPadding: const EdgeInsets.all(0),
+              ),
+              onEditingComplete: () {
+                final page = int.tryParse(pageInputController.text);
+                if (page == null) {
+                  return;
+                }
+                final newPage = (page - 1).clamp(0, pageCount);
+                pageController.jumpToPage(newPage);
+              },
+            ),
           ),
-          onChanged: (value) {
-            final page = int.tryParse(value);
-            if (page == null) {
-              return;
-            }
-            final newPage = (page - 1).clamp(0, pageCount);
-            pageController.jumpToPage(newPage);
-          },
         ),
-      ),
+        _pagingButton(true),
+      ],
     );
   }
 }
 
-class _ZoomSlider extends StatelessWidget {
-  const _ZoomSlider({
+class _ZoomInputField extends StatelessWidget {
+  const _ZoomInputField({
     Key key,
     @required this.photoViewController,
     @required this.isFullscreen,
-    @required this.initialScale,
+    @required this.scaleInputController,
   }) : super(key: key);
 
   final PhotoViewController photoViewController;
+  final TextEditingController scaleInputController;
   final bool isFullscreen;
-  final double initialScale;
+
+  Widget _zoomButton(bool zoom) {
+    final icon = zoom ? Icons.zoom_in : Icons.zoom_out;
+    final disable = zoom
+        ? photoViewController.scale >= _maxScale
+        : photoViewController.scale <= _minScale;
+    return IconButton(
+      icon: Icon(icon),
+      onPressed: disable
+          ? null
+          : () {
+              const interval = .1;
+              final nowValue = photoViewController.scale;
+              final newValue = zoom ? nowValue + interval : nowValue - interval;
+              photoViewController.scale = newValue.clamp(_minScale, _maxScale);
+            },
+    );
+  }
 
   @override
   Widget build(BuildContext context) {
-    Widget _zoomButton(bool zoom) {
-      final icon = zoom ? Icons.zoom_in : Icons.zoom_out;
-      return IconButton(
-        icon: Icon(icon),
-        onPressed: () {
-          const interval = (_maxScale - _minScale) * .2;
-          final nowValue = photoViewController.scale;
-          final newValue = zoom ? nowValue + interval : nowValue - interval;
-          photoViewController.scale = newValue.clamp(_minScale, _maxScale);
-        },
-      );
-    }
-
     return Row(
       mainAxisAlignment: MainAxisAlignment.center,
       mainAxisSize: MainAxisSize.min,
       children: [
         _zoomButton(false),
-        SliderTheme(
-          data: SliderTheme.of(context).copyWith(
-            trackHeight: 3,
-            thumbShape: const RoundSliderThumbShape(
-              enabledThumbRadius: 6,
-              pressedElevation: 4,
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 8),
+          child: SizedBox(
+            width: 48,
+            child: TextField(
+              maxLength: 3,
+              controller: scaleInputController,
+              inputFormatters: [
+                FilteringTextInputFormatter.allow(RegExp('[0-9]')),
+              ],
+              decoration: const InputDecoration(
+                suffixText: '%',
+                counter: SizedBox.shrink(),
+                contentPadding: EdgeInsets.all(0),
+              ),
+              onEditingComplete: () {
+                final scale = int.tryParse(scaleInputController.text);
+                if (scale == null) {
+                  return;
+                }
+                photoViewController.scale =
+                    (scale / 100).clamp(_minScale, _maxScale);
+              },
             ),
-            overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
-          ),
-          child: Slider(
-            value: photoViewController.scale,
-            max: _maxScale,
-            min: _minScale,
-            onChanged: (value) => photoViewController.scale = value,
           ),
         ),
         _zoomButton(true),
@@ -626,12 +669,16 @@ class _PagingButton extends StatelessWidget {
     final end =
         isNext ? FractionalOffset.centerRight : FractionalOffset.centerLeft;
     final icon = isNext ? Icons.navigate_next : Icons.navigate_before;
+    final pagingAction = () => paging(
+          duration: _pagingDuration,
+          curve: Curves.ease,
+        );
     return Positioned(
       right: isNext ? hPosition : null,
       left: isNext ? null : hPosition,
-      child: Container(
-        decoration: visible
-            ? BoxDecoration(
+      child: visible
+          ? Container(
+              decoration: BoxDecoration(
                 gradient: LinearGradient(
                   begin: begin,
                   end: end,
@@ -641,28 +688,22 @@ class _PagingButton extends StatelessWidget {
                   ],
                   stops: const [0, 1],
                 ),
-              )
-            : null,
-        height: height,
-        width: width,
-        child: visible
-            ? FlatButton(
+              ),
+              height: height,
+              width: width,
+              child: FlatButton(
                 child: Icon(
                   icon,
                   size: 32,
                 ),
-                onPressed: () => paging(
-                  duration: _pagingDuration,
-                  curve: Curves.ease,
-                ),
-              )
-            : GestureDetector(
-                onTap: () => paging(
-                  duration: _pagingDuration,
-                  curve: Curves.ease,
-                ),
+                onPressed: pagingAction,
               ),
-      ),
+            )
+          : SizedBox(
+              width: width,
+              height: height,
+              child: GestureDetector(onTap: pagingAction),
+            ),
     );
   }
 }
