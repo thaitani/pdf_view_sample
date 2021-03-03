@@ -22,6 +22,7 @@ class PdfViewer extends StatefulWidget {
     this.scrollController,
     this.width,
     this.maxHeight,
+    this.minHeight,
   })  : _isFullscreen = false,
         super(key: key);
 
@@ -31,6 +32,7 @@ class PdfViewer extends StatefulWidget {
     @required this.pdfDocument,
     this.scrollController,
     this.maxHeight,
+    this.minHeight,
   })  : _isFullscreen = true,
         width = null,
         super(key: key);
@@ -38,7 +40,7 @@ class PdfViewer extends StatefulWidget {
   final int initialPage;
   final Future<PdfDocument> pdfDocument;
   final ScrollController scrollController;
-  final double width, maxHeight;
+  final double width, maxHeight, minHeight;
   final bool _isFullscreen;
 
   @override
@@ -140,6 +142,7 @@ class _PdfViewerState extends State<PdfViewer> {
           duration: const Duration(milliseconds: 100),
           constraints: constraint.copyWith(
             maxHeight: widget.maxHeight,
+            minHeight: widget.minHeight,
           ),
           height: height,
           width: width,
@@ -221,7 +224,7 @@ class _OperationArea extends StatefulWidget {
 
 class __OperationAreaState extends State<_OperationArea> {
   static const height = 48.0;
-  static const width = 450.0;
+  static const width = 420.0;
 
   double top = 0;
   double left;
@@ -451,7 +454,13 @@ class _ZoomInputField extends StatelessWidget {
           : () {
               const interval = .1;
               final nowValue = photoViewController.scale;
-              final newValue = zoom ? nowValue + interval : nowValue - interval;
+              final roundValue =
+                  (zoom ? (nowValue * 10).ceil() : (nowValue * 10).floor()) /
+                      10;
+              final separateValue =
+                  zoom ? nowValue + interval : nowValue - interval;
+              final newValue =
+                  roundValue != nowValue ? roundValue : separateValue;
               photoViewController.scale = newValue.clamp(_minScale, _maxScale);
             },
     );
@@ -549,6 +558,7 @@ class _PdfView extends StatelessWidget {
                       scale;
               final pagingButtonWidth = pdfSize.shortestSide * .2;
               return Stack(
+                alignment: Alignment.center,
                 children: [
                   PhotoView(
                     controller: photoViewController,
@@ -766,6 +776,7 @@ class _FullscreenPdfView extends StatelessWidget {
               pdfDocument: pdfDocument,
               initialPage: initialPage,
               scrollController: scrollController,
+              minHeight: MediaQuery.of(context).size.height,
             ),
           ),
         ),
