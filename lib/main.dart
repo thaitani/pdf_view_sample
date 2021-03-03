@@ -44,9 +44,10 @@ class __HomeState extends State<_Home> {
             child: Padding(
               padding: const EdgeInsets.all(8.0),
               child: Card(
+                child: Padding(
+                  padding: const EdgeInsets.all(8.0),
                 child: PdfViewer(
                   key: Key(pdfNameList[pdfIndex]),
-                  padding: const EdgeInsets.symmetric(vertical: 16),
                   pdfDocument: PdfDocument.openAsset(pdfNameList[pdfIndex]),
                   scrollController: scrollController,
                   // width: 500,
@@ -55,6 +56,7 @@ class __HomeState extends State<_Home> {
             ),
           ),
         ),
+      ),
       ),
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.replay),

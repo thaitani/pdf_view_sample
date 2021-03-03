@@ -11,13 +11,7 @@ import 'package:photo_view/photo_view_gallery.dart';
 import 'package:url_launcher/url_launcher.dart';
 
 const _pagingDuration = Duration(milliseconds: 750);
-const _minScale = 1.0;
 const _maxScaleMagnification = 1.5;
-const _fullscreenMagnification = 1.2;
-double _maxScale(bool isFullscreen) =>
-    _minScale *
-    _maxScaleMagnification *
-    (isFullscreen ? _fullscreenMagnification : 1);
 
 class PdfViewer extends StatefulWidget {
   const PdfViewer({
@@ -27,7 +21,6 @@ class PdfViewer extends StatefulWidget {
     this.scrollController,
     this.width,
     this.maxHeight,
-    this.padding = EdgeInsets.zero,
   })  : _isFullscreen = false,
         super(key: key);
 
@@ -38,7 +31,6 @@ class PdfViewer extends StatefulWidget {
     this.scrollController,
     this.maxHeight,
   })  : _isFullscreen = true,
-        padding = EdgeInsets.zero,
         width = null,
         super(key: key);
 
@@ -46,7 +38,6 @@ class PdfViewer extends StatefulWidget {
   final Future<PdfDocument> pdfDocument;
   final ScrollController scrollController;
   final double width, maxHeight;
-  final EdgeInsets padding;
   final bool _isFullscreen;
 
   @override
@@ -63,8 +54,23 @@ class _PdfViewerState extends State<PdfViewer> {
   Size _pdfSize = Size.zero;
   int _pdfPageCount;
 
-  double get pdfHeight => _pdfSize.height * _scale;
-  double get pdfWidth => _pdfSize.width * _scale;
+  Size get pdfSize => _pdfSize * _scale;
+  Size get fullscreenSize => MediaQuery.of(context).size * .9;
+
+  Size divideSize(Size size1, Size size2) =>
+      Size(size1.width / size2.width, size1.height / size2.height);
+
+  double get initialScale {
+    final RenderBox box = _pdfViewerKey.currentContext?.findRenderObject();
+    final screenSize = widget._isFullscreen ? fullscreenSize : box.size;
+    final maxInitialScale = widget._isFullscreen ? 1.4 : 1;
+    if (_pdfSize == Size.zero || screenSize == null) {
+      return 1;
+    }
+    return divideSize(screenSize, _pdfSize)
+        .shortestSide
+        .clamp(double.minPositive, maxInitialScale);
+  }
 
   set scale(double scale) {
     if (scale != _scale) {
@@ -113,23 +119,17 @@ class _PdfViewerState extends State<PdfViewer> {
       key: _pdfViewerKey,
       builder: (_, constraint) {
         final width = widget.width ?? constraint.maxWidth;
-        final height = pdfHeight.isNaN
-            ? MediaQuery.of(context).size.height
-            : (pdfHeight * 1.05);
-        print('max $width, $height');
-        print('pdf $pdfWidth, $pdfHeight');
-        const pagingButtonWidth = 108.0;
-        final pagingButtonHeight = pdfHeight;
+        final height =
+            pdfSize.height.isNaN ? fullscreenSize.height : pdfSize.height;
+        final viewerSize = Size(width, height);
+        print('max $viewerSize');
+        print('pdf $pdfSize');
 
-        final pdfMarginLeft = (width - pdfWidth) / 2 - widget.padding.left;
-        final pdfMarginTop = (height - pdfHeight) / 2 - widget.padding.top;
-
-        final pagingButtonPositionH = (pdfMarginLeft - pagingButtonWidth)
-            .clamp(double.minPositive, width);
+        final pdfMargin =
+            Offset(width - pdfSize.width, height - pdfSize.height) / 2;
 
         return AnimatedContainer(
           duration: const Duration(milliseconds: 100),
-          padding: widget.padding,
           constraints: constraint.copyWith(
             maxHeight: widget.maxHeight,
           ),
@@ -154,33 +154,17 @@ class _PdfViewerState extends State<PdfViewer> {
                         pdfPageCount = pageCount;
                       },
                       isFullscreen: widget._isFullscreen,
-                      pdfMargin: Offset(pdfMarginLeft, pdfMarginTop),
+                      initialScale: initialScale,
+                      pdfMargin: pdfMargin,
+                      viewSize: viewerSize,
                     );
                   }
                   return const _LoadingView();
                 },
               ),
               if (!_scale.isNaN) ...[
-                // TODO(haitani): 画面サイズが小さい時見えないボタンにする
-                if (width > 580) ...[
-                  _PagingButton(
-                    height: pagingButtonHeight,
-                    width: pagingButtonWidth,
-                    isNext: false,
-                    pageController: _pageController,
-                    hPosition: pagingButtonPositionH,
-                  ),
-                  _PagingButton(
-                    height: pagingButtonHeight,
-                    width: pagingButtonWidth,
-                    isNext: true,
-                    pageController: _pageController,
-                    hPosition: pagingButtonPositionH,
-                  ),
-                ],
                 _OperationArea(
                   pdfViewerKey: _pdfViewerKey,
-                  pdfViewerPadding: widget.padding,
                   pdfDocument: widget.pdfDocument,
                   isFullscreen: widget._isFullscreen,
                   pageController: _pageController,
@@ -188,6 +172,7 @@ class _PdfViewerState extends State<PdfViewer> {
                   pageCount: _pdfPageCount,
                   photoViewController: _photoViewController,
                   scrollController: widget.scrollController,
+                  initialScale: initialScale,
                 ),
               ]
             ],
@@ -202,18 +187,17 @@ class _OperationArea extends StatefulWidget {
   const _OperationArea({
     Key key,
     @required this.pdfViewerKey,
-    @required this.pdfViewerPadding,
     @required this.pdfDocument,
     @required this.isFullscreen,
     @required this.pageController,
     @required this.pageInputController,
     @required this.photoViewController,
     @required this.pageCount,
+    @required this.initialScale,
     this.scrollController,
   }) : super(key: key);
 
   final GlobalKey pdfViewerKey;
-  final EdgeInsets pdfViewerPadding;
   final Future<PdfDocument> pdfDocument;
   final bool isFullscreen;
   final PageController pageController;
@@ -221,6 +205,7 @@ class _OperationArea extends StatefulWidget {
   final TextEditingController pageInputController;
   final int pageCount;
   final ScrollController scrollController;
+  final double initialScale;
 
   @override
   __OperationAreaState createState() => __OperationAreaState();
@@ -235,10 +220,8 @@ class __OperationAreaState extends State<_OperationArea> {
   double opacity = .4;
   double scrollOffset = 0;
   double get marginV =>
-      height +
-      (widget.scrollController?.position?.maxScrollExtent ?? 0) +
-      widget.pdfViewerPadding.vertical;
-  double get marginH => 60 + widget.pdfViewerPadding.horizontal;
+      height + widget.scrollController?.position?.maxScrollExtent ?? 0;
+  double get marginH => width / 7;
 
   Future<void> _onTapFullscreenButton(BuildContext context) async {
     if (widget.isFullscreen) {
@@ -261,14 +244,10 @@ class __OperationAreaState extends State<_OperationArea> {
   void _onDragEnd(DraggableDetails detail) {
     final RenderBox box = widget.pdfViewerKey.currentContext.findRenderObject();
     setState(() {
-      top = (detail.offset.dy -
-              box.localToGlobal(Offset.zero).dy -
-              widget.pdfViewerPadding.top -
-              scrollOffset)
-          .clamp(0, box.size.height - marginV);
-      left = (detail.offset.dx -
-              box.localToGlobal(Offset.zero).dx -
-              widget.pdfViewerPadding.left)
+      top =
+          (detail.offset.dy - box.localToGlobal(Offset.zero).dy - scrollOffset)
+              .clamp(0, box.size.height - marginV);
+      left = (detail.offset.dx - box.localToGlobal(Offset.zero).dx)
           .clamp(0, box.size.width - marginH);
     });
   }
@@ -333,6 +312,7 @@ class __OperationAreaState extends State<_OperationArea> {
                 _ZoomSlider(
                   isFullscreen: widget.isFullscreen,
                   photoViewController: widget.photoViewController,
+                  initialScale: widget.initialScale,
                 ),
                 _FullscreenButton(
                   isFullscreen: widget.isFullscreen,
@@ -423,10 +403,16 @@ class _ZoomSlider extends StatelessWidget {
     Key key,
     @required this.photoViewController,
     @required this.isFullscreen,
+    @required this.initialScale,
   }) : super(key: key);
 
   final PhotoViewController photoViewController;
   final bool isFullscreen;
+  final double initialScale;
+
+  double get _maxScale => initialScale * _maxScaleMagnification;
+
+  double get _minScale => initialScale;
 
   @override
   Widget build(BuildContext context) {
@@ -435,11 +421,10 @@ class _ZoomSlider extends StatelessWidget {
       return IconButton(
         icon: Icon(icon),
         onPressed: () {
-          final interval = (_maxScale(isFullscreen) - _minScale) * .2;
+          final interval = (_maxScale - _minScale) * .2;
           final nowValue = photoViewController.scale;
           final newValue = zoom ? nowValue + interval : nowValue - interval;
-          photoViewController.scale =
-              newValue.clamp(_minScale, _maxScale(isFullscreen));
+          photoViewController.scale = newValue.clamp(_minScale, _maxScale);
         },
       );
     }
@@ -460,11 +445,9 @@ class _ZoomSlider extends StatelessWidget {
           ),
           child: Slider(
             value: photoViewController.scale,
-            max: _maxScale(isFullscreen),
+            max: _maxScale,
             min: _minScale,
-            onChanged: (value) {
-              photoViewController.scale = value;
-            },
+            onChanged: (value) => photoViewController.scale = value,
           ),
         ),
         _zoomButton(true),
@@ -484,6 +467,8 @@ class _PdfView extends StatelessWidget {
     @required this.setPdfInfo,
     @required this.isFullscreen,
     @required this.pdfMargin,
+    @required this.initialScale,
+    @required this.viewSize,
   }) : super(key: key);
 
   final PdfDocument pdfDocument;
@@ -494,6 +479,8 @@ class _PdfView extends StatelessWidget {
   final void Function(Size pdfSize, int pageCount) setPdfInfo;
   final bool isFullscreen;
   final Offset pdfMargin;
+  final double initialScale;
+  final Size viewSize;
 
   @override
   Widget build(BuildContext context) {
@@ -510,11 +497,17 @@ class _PdfView extends StatelessWidget {
     };
     return PhotoViewGallery.builder(
       builder: (context, index) => PhotoViewGalleryPageOptions.customChild(
+        disableGestures: true,
         child: FutureBuilder<PdfPageImage>(
           future: getPdfImage(index + 1),
           builder: (context, snapshot) {
             if (snapshot.hasData) {
               final pdfData = snapshot.data;
+              final scale = photoViewController.scale ?? 1;
+              final pdfSize =
+                  Size(pdfData.width.toDouble(), pdfData.height.toDouble()) *
+                      scale;
+              final pagingButtonWidth = pdfSize.shortestSide * .2;
               return Stack(
                 children: [
                   PhotoView(
@@ -525,9 +518,27 @@ class _PdfView extends StatelessWidget {
                       color: Colors.transparent,
                     ),
                     filterQuality: FilterQuality.high,
-                    initialScale: _minScale,
-                    minScale: _minScale,
-                    maxScale: _maxScale(isFullscreen),
+                    initialScale: initialScale,
+                    minScale: initialScale,
+                    maxScale: initialScale * _maxScaleMagnification,
+                  ),
+                  _PagingButton(
+                    height: pdfSize.height,
+                    width: pagingButtonWidth,
+                    isNext: false,
+                    pageController: pageController,
+                    hPosition: (pdfMargin.dx - pagingButtonWidth)
+                        .clamp(double.minPositive, viewSize.width),
+                    visible: viewSize.width > 580,
+                  ),
+                  _PagingButton(
+                    height: pdfSize.height,
+                    width: pagingButtonWidth,
+                    isNext: true,
+                    pageController: pageController,
+                    hPosition: (pdfMargin.dx - pagingButtonWidth)
+                        .clamp(double.minPositive, viewSize.width),
+                    visible: viewSize.width > 580,
                   ),
                   if (!(pdfMargin.dx.isNaN || pdfMargin.dy.isNaN) &&
                       pdfData.annotations != null)
@@ -601,12 +612,13 @@ class _PagingButton extends StatelessWidget {
     @required this.isNext,
     @required this.pageController,
     this.hPosition,
+    this.visible = true,
   }) : super(key: key);
-  final double height;
-  final double width;
+  final double height, width;
   final bool isNext;
   final PageController pageController;
   final double hPosition;
+  final bool visible;
 
   @override
   Widget build(BuildContext context) {
@@ -621,29 +633,38 @@ class _PagingButton extends StatelessWidget {
       right: isNext ? hPosition : null,
       left: isNext ? null : hPosition,
       child: Container(
-        decoration: BoxDecoration(
-          gradient: LinearGradient(
-            begin: begin,
-            end: end,
-            colors: [
-              Colors.transparent,
-              Theme.of(context).cardColor.withOpacity(0.4),
-            ],
-            stops: const [0, 1],
-          ),
-        ),
+        decoration: visible
+            ? BoxDecoration(
+                gradient: LinearGradient(
+                  begin: begin,
+                  end: end,
+                  colors: [
+                    Colors.transparent,
+                    Theme.of(context).cardColor.withOpacity(0.4),
+                  ],
+                  stops: const [0, 1],
+                ),
+              )
+            : null,
         height: height,
         width: width,
-        child: FlatButton(
-          child: Icon(
-            icon,
-            size: 32,
-          ),
-          onPressed: () => paging(
-            duration: _pagingDuration,
-            curve: Curves.ease,
-          ),
-        ),
+        child: visible
+            ? FlatButton(
+                child: Icon(
+                  icon,
+                  size: 32,
+                ),
+                onPressed: () => paging(
+                  duration: _pagingDuration,
+                  curve: Curves.ease,
+                ),
+              )
+            : GestureDetector(
+                onTap: () => paging(
+                  duration: _pagingDuration,
+                  curve: Curves.ease,
+                ),
+              ),
       ),
     );
   }
@@ -716,12 +737,10 @@ class _FullscreenPdfView extends StatelessWidget {
 }
 
 extension RectEx on Rect {
-  Rect operator *(double multiple) {
-    return Rect.fromLTRB(
-      left * multiple,
-      top * multiple,
-      right * multiple,
-      bottom * multiple,
-    );
-  }
+  Rect operator *(double multiple) => Rect.fromLTRB(
+        left * multiple,
+        top * multiple,
+        right * multiple,
+        bottom * multiple,
+      );
 }
