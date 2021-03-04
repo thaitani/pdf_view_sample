@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:ui';
 
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
@@ -13,6 +14,7 @@ import 'package:url_launcher/url_launcher.dart';
 const _pagingDuration = Duration(milliseconds: 750);
 const _minScale = .5;
 const _maxScale = 2.0;
+const toolBoxHeight = 48.0;
 
 class PdfViewer extends StatefulWidget {
   const PdfViewer({
@@ -59,6 +61,7 @@ class _PdfViewerState extends State<PdfViewer> {
   int _pdfPageCount;
 
   Size get pdfSize => _pdfSize * _scale;
+
   Size get fullscreenSize => MediaQuery.of(context).size * .9;
 
   Size divideSize(Size size1, Size size2) =>
@@ -107,7 +110,6 @@ class _PdfViewerState extends State<PdfViewer> {
         if (scaleText != _scaleInputController.text) {
           _scaleInputController.text = scaleText;
         }
-        print(event);
       });
     _photoViewScaleStateController = PhotoViewScaleStateController();
     super.initState();
@@ -132,11 +134,10 @@ class _PdfViewerState extends State<PdfViewer> {
         final height =
             pdfSize.height.isNaN ? fullscreenSize.height : pdfSize.height;
         final viewerSize = Size(width, height);
-        print('max $viewerSize');
-        print('pdf $pdfSize');
 
-        final pdfMargin =
-            Offset(width - pdfSize.width, height - pdfSize.height) / 2;
+        final pdfMarginW = (width - pdfSize.width) / 2;
+        final pdfMarginH = (height - pdfSize.height) / 2 + toolBoxHeight;
+        final pdfMargin = Offset(pdfMarginW, pdfMarginH);
 
         return AnimatedContainer(
           duration: const Duration(milliseconds: 100),
@@ -144,10 +145,11 @@ class _PdfViewerState extends State<PdfViewer> {
             maxHeight: widget.maxHeight,
             minHeight: widget.minHeight,
           ),
-          height: height,
+          height: height + toolBoxHeight * 2,
           width: width,
           child: Stack(
             alignment: Alignment.center,
+            clipBehavior: Clip.none,
             children: [
               FutureBuilder<PdfDocument>(
                 future: widget.pdfDocument,
@@ -174,7 +176,7 @@ class _PdfViewerState extends State<PdfViewer> {
                 },
               ),
               if (!_scale.isNaN) ...[
-                _OperationArea(
+                _ToolBox(
                   pdfViewerKey: _pdfViewerKey,
                   pdfDocument: widget.pdfDocument,
                   isFullscreen: widget._isFullscreen,
@@ -184,6 +186,7 @@ class _PdfViewerState extends State<PdfViewer> {
                   pageCount: _pdfPageCount,
                   photoViewController: _photoViewController,
                   scrollController: widget.scrollController,
+                  pdfSize: pdfSize,
                 ),
               ]
             ],
@@ -194,8 +197,8 @@ class _PdfViewerState extends State<PdfViewer> {
   }
 }
 
-class _OperationArea extends StatefulWidget {
-  const _OperationArea({
+class _ToolBox extends StatefulWidget {
+  const _ToolBox({
     Key key,
     @required this.pdfViewerKey,
     @required this.pdfDocument,
@@ -205,6 +208,7 @@ class _OperationArea extends StatefulWidget {
     @required this.scaleInputController,
     @required this.photoViewController,
     @required this.pageCount,
+    @required this.pdfSize,
     this.scrollController,
   }) : super(key: key);
 
@@ -217,21 +221,22 @@ class _OperationArea extends StatefulWidget {
   final TextEditingController scaleInputController;
   final int pageCount;
   final ScrollController scrollController;
+  final Size pdfSize;
 
   @override
-  __OperationAreaState createState() => __OperationAreaState();
+  _ToolBoxState createState() => _ToolBoxState();
 }
 
-class __OperationAreaState extends State<_OperationArea> {
-  static const height = 48.0;
-  static const width = 420.0;
+class _ToolBoxState extends State<_ToolBox> {
+  double get width {
+    final RenderBox box =
+        widget.pdfViewerKey.currentContext?.findRenderObject();
+    return widget.pdfSize.width.clamp(double.minPositive, box.size.width);
+  }
 
-  double top = 0;
-  double left;
-  double opacity = .4;
-  double scrollOffset = 0;
   double get marginV =>
-      height + widget.scrollController?.position?.maxScrollExtent ?? 0;
+      toolBoxHeight + widget.scrollController?.position?.maxScrollExtent ?? 0;
+
   double get marginH => width / 7;
 
   Future<void> _onTapFullscreenButton(BuildContext context) async {
@@ -252,114 +257,35 @@ class __OperationAreaState extends State<_OperationArea> {
     }
   }
 
-  void _onDragEnd(DraggableDetails detail) {
-    final RenderBox box = widget.pdfViewerKey.currentContext.findRenderObject();
-    setState(() {
-      top =
-          (detail.offset.dy - box.localToGlobal(Offset.zero).dy - scrollOffset)
-              .clamp(0, box.size.height - marginV);
-      left = (detail.offset.dx - box.localToGlobal(Offset.zero).dx)
-          .clamp(0, box.size.width - marginH);
-    });
-  }
-
-  void _setScrollOffset() {
-    if (mounted) {
-      setState(() {
-        scrollOffset = widget.scrollController.offset;
-      });
-    }
-  }
-
-  @override
-  void initState() {
-    widget.scrollController?.addListener(_setScrollOffset);
-    super.initState();
-  }
-
-  @override
-  void dispose() {
-    widget.scrollController?.removeListener(_setScrollOffset);
-    super.dispose();
-  }
-
-  @override
-  void didUpdateWidget(covariant _OperationArea oldWidget) {
-    final RenderBox box = widget.pdfViewerKey.currentContext.findRenderObject();
-    setState(() {
-      top = top.clamp(0, box.size.height - marginV);
-      left = left?.clamp(0, box.size.width - marginH);
-    });
-    super.didUpdateWidget(oldWidget);
-  }
-
   @override
   Widget build(BuildContext context) {
     return Positioned(
-      top: top + scrollOffset,
-      left: left,
-      height: height,
+      top: 0,
+      height: toolBoxHeight,
       width: width,
-      child: MouseRegion(
-        onHover: (e) => setState(() => opacity = .9),
-        onExit: (e) => setState(() => opacity = .4),
-        child: Opacity(
-          opacity: opacity,
-          child: Container(
-            color: Theme.of(context).primaryColor,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                _DragArea(
-                  height: height,
-                  width: width,
-                  onDragEnd: _onDragEnd,
-                ),
-                _PageInputField(
-                  pageController: widget.pageController,
-                  pageInputController: widget.pageInputController,
-                  pageCount: widget.pageCount,
-                ),
-                _ZoomInputField(
-                  isFullscreen: widget.isFullscreen,
-                  photoViewController: widget.photoViewController,
-                  scaleInputController: widget.scaleInputController,
-                ),
-                _FullscreenButton(
-                  isFullscreen: widget.isFullscreen,
-                  onPressed: () => _onTapFullscreenButton(context),
-                ),
-              ],
-            ),
+      child: Opacity(
+        opacity: .9,
+        child: Container(
+          color: Theme.of(context).primaryColor,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _PageInputField(
+                pageController: widget.pageController,
+                pageInputController: widget.pageInputController,
+                pageCount: widget.pageCount,
+              ),
+              _ZoomInputField(
+                photoViewController: widget.photoViewController,
+                scaleInputController: widget.scaleInputController,
+                pdfSize: widget.pdfSize,
+              ),
+              _FullscreenButton(
+                isFullscreen: widget.isFullscreen,
+                onPressed: () => _onTapFullscreenButton(context),
+              ),
+            ],
           ),
-        ),
-      ),
-    );
-  }
-}
-
-class _DragArea extends StatelessWidget {
-  const _DragArea({Key key, this.height, this.width, this.onDragEnd})
-      : super(key: key);
-
-  final double height;
-  final double width;
-  final DragEndCallback onDragEnd;
-
-  @override
-  Widget build(BuildContext context) {
-    return MouseRegion(
-      cursor: SystemMouseCursors.move,
-      child: Draggable(
-        onDragEnd: onDragEnd,
-        feedback: Container(
-          height: height,
-          width: width,
-          decoration: BoxDecoration(border: Border.all()),
-        ),
-        child: const Icon(
-          Icons.drag_indicator_sharp,
-          size: 28,
         ),
       ),
     );
@@ -378,54 +304,33 @@ class _PageInputField extends StatelessWidget {
   final TextEditingController pageInputController;
   final int pageCount;
 
-  Widget _pagingButton(bool isNext) {
-    final icon = isNext ? Icons.navigate_next : Icons.navigate_before;
-    final paging =
-        isNext ? pageController.nextPage : pageController.previousPage;
-    return IconButton(
-      icon: Icon(icon),
-      onPressed: () => paging(
-        duration: _pagingDuration,
-        curve: Curves.ease,
-      ),
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.center,
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        _pagingButton(false),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: SizedBox(
-            width: 48,
-            child: TextField(
-              maxLength: 3,
-              controller: pageInputController,
-              inputFormatters: [
-                FilteringTextInputFormatter.allow(RegExp('[0-9]')),
-              ],
-              decoration: InputDecoration(
-                suffixText: '/$pageCount',
-                counter: const SizedBox.shrink(),
-                contentPadding: const EdgeInsets.all(0),
-              ),
-              onEditingComplete: () {
-                final page = int.tryParse(pageInputController.text);
-                if (page == null) {
-                  return;
-                }
-                final newPage = (page - 1).clamp(0, pageCount);
-                pageController.jumpToPage(newPage);
-              },
-            ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      child: SizedBox(
+        width: 48,
+        child: TextField(
+          maxLength: 3,
+          controller: pageInputController,
+          inputFormatters: [
+            FilteringTextInputFormatter.allow(RegExp('[0-9]')),
+          ],
+          decoration: InputDecoration(
+            suffixText: '/$pageCount',
+            counter: const SizedBox.shrink(),
+            contentPadding: const EdgeInsets.all(0),
           ),
+          onEditingComplete: () {
+            final page = int.tryParse(pageInputController.text);
+            if (page == null) {
+              return;
+            }
+            final newPage = (page - 1).clamp(0, pageCount);
+            pageController.jumpToPage(newPage);
+          },
         ),
-        _pagingButton(true),
-      ],
+      ),
     );
   }
 }
@@ -434,36 +339,40 @@ class _ZoomInputField extends StatelessWidget {
   const _ZoomInputField({
     Key key,
     @required this.photoViewController,
-    @required this.isFullscreen,
     @required this.scaleInputController,
+    @required this.pdfSize,
   }) : super(key: key);
 
   final PhotoViewController photoViewController;
   final TextEditingController scaleInputController;
-  final bool isFullscreen;
+  final Size pdfSize;
 
   Widget _zoomButton(bool zoom) {
     final icon = zoom ? Icons.zoom_in : Icons.zoom_out;
     final disable = zoom
         ? photoViewController.scale >= _maxScale
         : photoViewController.scale <= _minScale;
-    return IconButton(
-      icon: Icon(icon),
-      onPressed: disable
-          ? null
-          : () {
-              const interval = .1;
-              final nowValue = photoViewController.scale;
-              final roundValue =
-                  (zoom ? (nowValue * 10).ceil() : (nowValue * 10).floor()) /
-                      10;
-              final separateValue =
-                  zoom ? nowValue + interval : nowValue - interval;
-              final newValue =
-                  roundValue != nowValue ? roundValue : separateValue;
-              photoViewController.scale = newValue.clamp(_minScale, _maxScale);
-            },
-    );
+    return pdfSize.width < 320
+        ? const SizedBox.shrink()
+        : IconButton(
+            icon: Icon(icon),
+            onPressed: disable
+                ? null
+                : () {
+                    const interval = .1;
+                    final nowValue = photoViewController.scale;
+                    final roundValue = (zoom
+                            ? (nowValue * 10).ceil()
+                            : (nowValue * 10).floor()) /
+                        10;
+                    final separateValue =
+                        zoom ? nowValue + interval : nowValue - interval;
+                    final newValue =
+                        roundValue != nowValue ? roundValue : separateValue;
+                    photoViewController.scale =
+                        newValue.clamp(_minScale, _maxScale);
+                  },
+          );
   }
 
   @override
@@ -694,7 +603,7 @@ class _PagingButton extends StatelessWidget {
                   end: end,
                   colors: [
                     Colors.transparent,
-                    Theme.of(context).cardColor.withOpacity(0.4),
+                    Theme.of(context).cardColor.withOpacity(0.1),
                   ],
                   stops: const [0, 1],
                 ),
@@ -727,19 +636,24 @@ class _FullscreenButton extends StatelessWidget {
 
   final bool isFullscreen;
   final VoidCallback onPressed;
+
   @override
   Widget build(BuildContext context) {
-    return IconButton(
-      icon: Icon(
-        isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+    return Padding(
+      padding: const EdgeInsets.only(left: 32),
+      child: IconButton(
+        icon: Icon(
+          isFullscreen ? Icons.fullscreen_exit : Icons.fullscreen,
+        ),
+        onPressed: onPressed,
       ),
-      onPressed: onPressed,
     );
   }
 }
 
 class _LoadingView extends StatelessWidget {
   const _LoadingView({Key key}) : super(key: key);
+
   @override
   Widget build(BuildContext context) {
     return const Center(child: CircularProgressIndicator());
@@ -757,6 +671,7 @@ class _FullscreenPdfView extends StatelessWidget {
   final int initialPage;
   final Future<PdfDocument> pdfDocument;
   final PageController pageController;
+
   @override
   Widget build(BuildContext context) {
     final key = GlobalKey<_PdfViewerState>();
@@ -785,7 +700,7 @@ class _FullscreenPdfView extends StatelessWidget {
   }
 }
 
-extension RectEx on Rect {
+extension _RectEx on Rect {
   Rect operator *(double multiple) => Rect.fromLTRB(
         left * multiple,
         top * multiple,
