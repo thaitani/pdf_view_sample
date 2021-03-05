@@ -46,17 +46,17 @@ class __HomeState extends State<_Home> {
               child: Card(
                 child: Padding(
                   padding: const EdgeInsets.all(8.0),
-                child: PdfViewer(
-                  key: Key(pdfNameList[pdfIndex]),
-                  pdfDocument: PdfDocument.openAsset(pdfNameList[pdfIndex]),
-                  scrollController: scrollController,
-                  // width: 500,
+                  child: PdfViewer(
+                    key: Key(pdfNameList[pdfIndex]),
+                    pdfDocument: PdfDocument.openAsset(pdfNameList[pdfIndex]),
+                    scrollController: scrollController,
+                    // width: 500,
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
       ),
       floatingActionButton: FloatingActionButton(
         child: const Icon(Icons.replay),
