@@ -27,8 +27,6 @@ dependencies:
   native_pdf_renderer:
     path: ../native_pdf_renderer
   photo_view:
-    git:
-      url: https://github.com/DevNico/photo_view.git
   url_launcher: ^6.0.2
 
 dev_dependencies:

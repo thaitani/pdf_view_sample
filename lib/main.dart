@@ -37,21 +37,18 @@ class __HomeState extends State<_Home> {
       appBar: AppBar(
         title: const Text('test'),
       ),
-      body: Builder(
-        builder: (context) => SingleChildScrollView(
-          controller: scrollController,
-          child: Center(
-            child: Padding(
-              padding: const EdgeInsets.all(8.0),
-              child: Card(
-                child: Padding(
-                  padding: const EdgeInsets.all(8.0),
-                  child: PdfViewer(
-                    key: Key(pdfNameList[pdfIndex]),
-                    pdfDocument: PdfDocument.openAsset(pdfNameList[pdfIndex]),
-                    scrollController: scrollController,
-                    // width: 500,
-                  ),
+      body: SingleChildScrollView(
+        controller: scrollController,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(8.0),
+            child: Card(
+              child: Padding(
+                padding: const EdgeInsets.all(8.0),
+                child: PdfViewer(
+                  key: Key(pdfNameList[pdfIndex]),
+                  pdfDocument: PdfDocument.openAsset(pdfNameList[pdfIndex]),
+                  scrollController: scrollController,
                 ),
               ),
             ),
