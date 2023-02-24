@@ -1,14 +1,8 @@
 import 'dart:async';
-import 'dart:ui';
 
-import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter/services.dart';
-import 'package:native_pdf_renderer/native_pdf_renderer.dart';
-import 'package:photo_view/photo_view.dart';
-import 'package:photo_view/photo_view_gallery.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:pdfx/pdfx.dart';
 
 const _pagingDuration = Duration(milliseconds: 750);
 const _minScale = .5;
@@ -32,16 +26,18 @@ class PdfViewer extends StatefulWidget {
     Key? key,
     required this.pdfDocument,
     this.scrollController,
-    this.maxHeight,
-    this.minHeight,
     this.pageController,
+    this.minHeight,
   })  : _isFullscreen = true,
         width = null,
+        maxHeight = null,
         super(key: key);
 
   final Future<PdfDocument> pdfDocument;
   final ScrollController? scrollController;
-  final double? width, maxHeight, minHeight;
+  final double? width;
+  final double? maxHeight;
+  final double? minHeight;
   final bool _isFullscreen;
   final PageController? pageController;
 
@@ -452,12 +448,12 @@ class _PdfView extends StatelessWidget {
     final getPdfImage = (int pageNumber) async {
       final page = await pdfDocument.getPage(pageNumber);
       setPdfInfo(
-        Size(page.width!.toDouble(), page.height!.toDouble()),
+        Size(page.width.toDouble(), page.height.toDouble()),
         pdfDocument.pagesCount,
       );
       return await page.render(
-        width: page.width! * _pdfSizeMagnification,
-        height: page.height! * _pdfSizeMagnification,
+        width: page.width * _pdfSizeMagnification,
+        height: page.height * _pdfSizeMagnification,
       );
     };
     return PhotoViewGallery.builder(
@@ -473,7 +469,7 @@ class _PdfView extends StatelessWidget {
                   Size(pdfData.width!.toDouble(), pdfData.height!.toDouble()) *
                       scale;
               final pagingButtonWidth = pdfSize.shortestSide * .2;
-              final annotations = pdfData.annotations;
+              // final annotations = pdfData.annotations;
               return Stack(
                 alignment: Alignment.center,
                 children: [
@@ -507,13 +503,12 @@ class _PdfView extends StatelessWidget {
                         .clamp(double.minPositive, viewSize.width),
                     visible: viewSize.width > 580,
                   ),
-                  if (!(pdfMargin.dx.isNaN || pdfMargin.dy.isNaN) &&
-                      annotations != null)
-                    _AnnotationLayer(
-                      annotations: annotations,
-                      scale: scale,
-                      offset: pdfMargin,
-                    ),
+                  // if (!(pdfMargin.dx.isNaN || pdfMargin.dy.isNaN))
+                  //   _AnnotationLayer(
+                  //     annotations: const [],
+                  //     scale: scale,
+                  //     offset: pdfMargin,
+                  //   ),
                 ],
               );
             }
@@ -537,39 +532,39 @@ class _PdfView extends StatelessWidget {
   }
 }
 
-class _AnnotationLayer extends StatelessWidget {
-  const _AnnotationLayer({
-    Key? key,
-    required this.annotations,
-    this.scale = 1.0,
-    this.offset = Offset.zero,
-  }) : super(key: key);
-  final List<PdfAnnotation> annotations;
-  final double scale;
-  final Offset offset;
+// class _AnnotationLayer extends StatelessWidget {
+//   const _AnnotationLayer({
+//     Key? key,
+//     required this.annotations,
+//     this.scale = 1.0,
+//     this.offset = Offset.zero,
+//   }) : super(key: key);
+//   final List<PdfAnnotation> annotations;
+//   final double scale;
+//   final Offset offset;
 
-  @override
-  Widget build(BuildContext context) {
-    return Stack(
-      children: [
-        for (final annotation in annotations)
-          if (annotation.subtype == 'Link' && annotation.url != null)
-            Positioned.fromRect(
-              rect: (annotation.rect * scale).shift(offset),
-              child: InkWell(
-                onTap: () async {
-                  final url = annotation.url!;
-                  final result = await canLaunch(url);
-                  if (result) {
-                    await launch(url);
-                  }
-                },
-              ),
-            ),
-      ],
-    );
-  }
-}
+//   @override
+//   Widget build(BuildContext context) {
+//     return Stack(
+//       children: [
+//         for (final annotation in annotations)
+//           if (annotation.subtype == 'Link' && annotation.url != null)
+//             Positioned.fromRect(
+//               rect: (annotation.rect * scale).shift(offset),
+//               child: InkWell(
+//                 onTap: () async {
+//                   final url = annotation.url!;
+//                   final result = await canLaunch(url);
+//                   if (result) {
+//                     await launch(url);
+//                   }
+//                 },
+//               ),
+//             ),
+//       ],
+//     );
+//   }
+// }
 
 class _PagingButton extends StatelessWidget {
   const _PagingButton({
@@ -700,7 +695,7 @@ class _FullscreenPdfView extends StatelessWidget {
               pageController: PageController(
                   initialPage: pageController.page?.toInt() ?? 0),
               scrollController: scrollController,
-              // minHeight: MediaQuery.of(context).size.height,
+              minHeight: MediaQuery.of(context).size.height,
             ),
           ),
         ),

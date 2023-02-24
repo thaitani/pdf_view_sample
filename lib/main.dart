@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:native_pdf_renderer/native_pdf_renderer.dart';
 import 'package:pdf_view/pdf/pdf_viewer.dart';
+import 'package:pdfx/pdfx.dart';
 
 void main() {
   runApp(MyApp());
@@ -11,8 +11,8 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     return MaterialApp(
       title: 'Flutter Demo',
-      darkTheme: ThemeData.dark(),
-      theme: ThemeData.light(),
+      darkTheme: ThemeData.dark(useMaterial3: true),
+      theme: ThemeData.light(useMaterial3: true),
       home: _Home(),
     );
   }
